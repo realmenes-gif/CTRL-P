@@ -15,7 +15,8 @@ import math
 import os
 
 from kivy.clock import Clock
-from kivy.graphics import Color, Ellipse, Line, Mesh, Rectangle
+from kivy.graphics import (Canvas, Color, Ellipse, Line, Mesh, Rectangle, StencilPop, StencilPush, StencilUnUse,
+                           StencilUse)
 from kivy.graphics.tesselator import Tesselator
 from kivy.metrics import dp, sp
 from kivy.uix.widget import Widget
@@ -68,6 +69,17 @@ class Visor(Widget):
         self._accion = None
         self._tex = None
         self._tex_vista = None
+        # Recorte: el plano y las marcas nunca se dibujan fuera del recuadro del visor.
+        with self.canvas.before:
+            StencilPush()
+            self._r_clip1 = Rectangle(pos=self.pos, size=self.size)
+            StencilUse()
+        self._g_temp = Canvas()
+        self.canvas.after.add(self._g_temp)
+        with self.canvas.after:
+            StencilUnUse()
+            self._r_clip2 = Rectangle(pos=self.pos, size=self.size)
+            StencilPop()
         with self.canvas:
             self._c_fondo = Color(*ui.rgba("suave"))
             self._r_fondo = Rectangle(pos=self.pos, size=self.size)
@@ -103,7 +115,7 @@ class Visor(Widget):
         self._tex = None
         self._r_img.texture = None
         self._r_img.size = (0, 0)
-        self.canvas.after.clear()
+        self._g_temp.clear()
 
     def ajustar(self):
         if not self.piramide or self.width < 20 or self.height < 20:
@@ -117,6 +129,8 @@ class Visor(Widget):
 
     def _mover_fondo(self, *_):
         self._r_fondo.pos, self._r_fondo.size = self.pos, self.size
+        self._r_clip1.pos, self._r_clip1.size = self.pos, self.size
+        self._r_clip2.pos, self._r_clip2.size = self.pos, self.size
         self._colocar_textura()
         self._dibujar_temporal()
 
@@ -294,7 +308,7 @@ class Visor(Widget):
             pass
 
     def _dibujar_temporal(self):
-        cv = self.canvas.after
+        cv = self._g_temp
         cv.clear()
         with cv:
             if self.vacios:
