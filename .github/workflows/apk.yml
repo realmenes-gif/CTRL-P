@@ -38,25 +38,42 @@ jobs:
             python -m pip install buildozer==1.6.0 setuptools
           } 2>&1 | tee registro/1_dependencias.txt
 
-      - name: Rama de python-for-android
+      - name: Preparar python-for-android
         run: |
-          if ! git ls-remote --tags https://github.com/kivy/python-for-android.git | grep -q "refs/tags/v2026.05.09$"; then
-            echo "Tag v2026.05.09 no encontrado: se usa master"
-            sed -i 's/^p4a.branch = .*/p4a.branch = master/' buildozer.spec
+          TAG=v2026.05.09
+          if ! git clone --depth 1 --branch $TAG https://github.com/kivy/python-for-android.git p4a-src; then
+            echo "Tag $TAG no encontrado: se usa master"
+            git clone --depth 1 https://github.com/kivy/python-for-android.git p4a-src
           fi
+          # Con dos arquitecturas, p4a recrea el venv encima del anterior y deja pip roto: se recrea limpio.
+          sed -i "s/shprint(host_python, '-m', 'venv', 'venv')/shprint(host_python, '-m', 'venv', '--clear', 'venv')/" p4a-src/pythonforandroid/build.py
+          grep -n "'venv', '--clear'" p4a-src/pythonforandroid/build.py
+          sed -i 's|^p4a.branch = .*|p4a.source_dir = ./p4a-src|' buildozer.spec
+          grep -n "^p4a" buildozer.spec
 
-      - name: Caché de buildozer
-        uses: actions/cache@v4
+      - name: Restaurar caché de buildozer
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.buildozer
             .buildozer
-          key: buildozer-${{ hashFiles('buildozer.spec') }}
+          key: buildozer-${{ hashFiles('buildozer.spec') }}-${{ github.run_id }}
+          restore-keys: |
+            buildozer-
 
       - name: Compilar
         run: |
           set -o pipefail
           yes | buildozer -v android debug 2>&1 | tee registro/2_compilar.txt
+
+      - name: Guardar caché de buildozer
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: buildozer-${{ hashFiles('buildozer.spec') }}-${{ github.run_id }}
 
       - name: Subir APK
         uses: actions/upload-artifact@v4
