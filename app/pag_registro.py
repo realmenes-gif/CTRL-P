@@ -94,6 +94,7 @@ class FilaRegistro(RecycleDataViewBehavior, BoxLayout):
         self.bind(pos=self._fondo, size=self._fondo)
         self.pag = None
         self.data = None
+        self._key = None
         self._armado_obs = None
 
     def _fondo(self, *_):
@@ -120,7 +121,7 @@ class FilaRegistro(RecycleDataViewBehavior, BoxLayout):
             if k == 3:
                 caja = AnchorLayout(size_hint_x=None, width=dp(ancho))
                 self.e_dia = CampoTabla(True, size_hint=(1, None), height=dp(38))
-                self.e_dia.bind(text=lambda w, t: self.pag._escribio(self.data, "v", t) if self.data else None)
+                self.e_dia.bind(text=lambda w, t: self.pag._escribio(self._key, "v", t) if self._key else None)
                 self.l_dia = Label(font_size=sp(13), font_name=ui.FAM, halign="right", valign="middle",
                                    color=rgba("texto"))
                 self.l_dia.bind(size=lambda w, *_: setattr(w, "text_size", (w.width - dp(6), w.height)))
@@ -130,7 +131,7 @@ class FilaRegistro(RecycleDataViewBehavior, BoxLayout):
             if k == 7:
                 caja = AnchorLayout(size_hint_x=None, width=dp(ancho))
                 self.e_obs = CampoTabla(False, size_hint=(1, None), height=dp(38))
-                self.e_obs.bind(text=lambda w, t: self.pag._escribio(self.data, "obs", t) if self.data else None)
+                self.e_obs.bind(text=lambda w, t: self.pag._escribio(self._key, "obs", t) if self._key else None)
                 self.caja_obs = caja
                 self.add_widget(caja)
                 continue
@@ -142,13 +143,41 @@ class FilaRegistro(RecycleDataViewBehavior, BoxLayout):
             self.lbls[k] = lb
             self.add_widget(lb)
 
+    def _valores(self, data):
+        neg = data.get("negrita", False)
+        vals = data.get("vals", {})
+        for k, lb in self.lbls.items():
+            lb.text = vals.get(k, "")
+            lb.bold = neg or (k == 7 and data.get("saldo_neg"))
+            lb.color = rgba("rojo") if (k == 7 and data.get("saldo_neg")) else (
+                rgba("texto2") if (k == 1 and vals.get(1) in ("—", "")) else rgba("texto"))
+        self.l_dia.text = vals.get(3, "")
+        self.l_dia.bold = neg
+
+    def actualizar_valores(self):
+        """Repinta solo los numeros (sin reasignar la fila): asi el campo donde se escribe no pierde el foco."""
+        if not self.data:
+            return
+        self._valores(self.data)
+        if self._key and self.pag is not None:
+            f = self.pag.modelo.get(self._key)
+            if f is not None:
+                self.e_dia.pintar(f.get("borde", ""))
+
     def refresh_view_attrs(self, rv, index, data):
         self.indice = index
         self.pag = rv.pag
         con_obs = rv.pag.ver_obs
         if self._armado_obs != con_obs:
             self._armar(con_obs)
-        self.data = None          # que los campos no escriban mientras se cargan
+        nueva = data.get("key") if data.get("tipo") == "hoja" else None
+        if nueva != self._key:
+            # La fila se reutiliza para otra ubicacion: lo que se este escribiendo no debe pasar a la nueva.
+            for campo in (self.e_dia, getattr(self, "e_obs", None)):
+                if campo is not None and campo.focus:
+                    campo.focus = False
+        self._key = None          # que los campos no escriban mientras se cargan
+        self.data = None
         fondo = data.get("fondo", "tarjeta")
         self._cf.rgba = rgba(fondo)
         neg = data.get("negrita", False)
@@ -163,12 +192,7 @@ class FilaRegistro(RecycleDataViewBehavior, BoxLayout):
             self.caja_mas.add_widget(self.b_mas)
         else:
             self.caja_mas.width = 0
-        vals = data.get("vals", {})
-        for k, lb in self.lbls.items():
-            lb.text = vals.get(k, "")
-            lb.bold = neg or (k == 7 and data.get("saldo_neg"))
-            lb.color = rgba("rojo") if (k == 7 and data.get("saldo_neg")) else (
-                rgba("texto2") if (k == 1 and vals.get(1) in ("—", "")) else rgba("texto"))
+        self._valores(data)
         self.caja_dia.clear_widgets()
         es_hoja = data.get("tipo") == "hoja"
         if es_hoja:
@@ -179,8 +203,6 @@ class FilaRegistro(RecycleDataViewBehavior, BoxLayout):
             self.e_dia.disabled = not f["editable"]
             self.e_dia.pintar(f.get("borde", ""))
         else:
-            self.l_dia.text = vals.get(3, "")
-            self.l_dia.bold = neg
             self.caja_dia.add_widget(self.l_dia)
         if con_obs:
             self.caja_obs.clear_widgets()
@@ -191,6 +213,7 @@ class FilaRegistro(RecycleDataViewBehavior, BoxLayout):
                     self.e_obs.text = f["obs"]
                 self.e_obs.disabled = not f["editable"]
         self.data = data
+        self._key = nueva
         return super().refresh_view_attrs(rv, index, data)
 
 
@@ -585,8 +608,8 @@ class PaginaRegistro(Pagina):
         else:
             self.agregar_tramo(d["nv"], d.get("equipo", ""))
 
-    def _escribio(self, d, campo, texto):
-        f = self.modelo.get(d["key"])
+    def _escribio(self, key, campo, texto):
+        f = self.modelo.get(key)
         if f is None or f[campo] == texto:
             return
         f[campo] = texto
@@ -674,7 +697,9 @@ class PaginaRegistro(Pagina):
             notas.append(f"Con este registro quedan {fmt(exc_t - exc_a)} {it['unidad']} como excedente no cobrable.")
         self.l_nota.text = "     ".join(notas)
         if solo_valores:
-            self.rv.refresh_from_data()
+            for w in list(self.rv.layout_manager.children if self.rv.layout_manager else []):
+                if isinstance(w, FilaRegistro):
+                    w.actualizar_valores()
         else:
             self._vista()
         self._estado()

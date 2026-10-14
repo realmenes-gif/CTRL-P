@@ -37,16 +37,32 @@ RUTA_LOG = None
 ARRANQUE = lambda texto: None  # main.py lo reemplaza para dejar rastro del arranque
 
 
+def ruta_log():
+    """errores.log en la carpeta de documentos (Documentos/CTRL-P DOC), donde se puede abrir y mandar.
+    Si todavia no hay permiso de archivos, queda en la carpeta interna de la app."""
+    app = App.get_running_app()
+    try:
+        carpeta = ui.carpeta_docs(getattr(app, "cfg", None))
+        prueba = os.path.join(carpeta, "errores.log")
+        with open(prueba, "a", encoding="utf-8"):
+            pass
+        return prueba
+    except Exception:
+        return RUTA_LOG
+
+
 def registrar_error(titulo, texto):
     try:
         ARRANQUE(f"{titulo}\n{texto}")
     except Exception:
         pass
+    ruta = ruta_log()
     try:
-        with open(RUTA_LOG, "a", encoding="utf-8") as f:
+        with open(ruta, "a", encoding="utf-8") as f:
             f.write(f"\n===== {core.ahora()} · {titulo}\n{texto}\n")
     except Exception:
         pass
+    return ruta
 
 
 class _Errores(ExceptionHandler):
@@ -55,7 +71,12 @@ class _Errores(ExceptionHandler):
     def handle_exception(self, inst):
         if isinstance(inst, KeyboardInterrupt):
             return ExceptionManager.RAISE
-        registrar_error("Error en pantalla", "".join(traceback.format_exception(type(inst), inst, inst.__traceback__)))
+        detalle = "".join(traceback.format_exception(type(inst), inst, inst.__traceback__))
+        ruta = registrar_error("Error en pantalla", detalle)
+        # Las ultimas lineas del detalle van en el aviso: con una captura de pantalla alcanza.
+        donde = []
+        for fr in traceback.extract_tb(inst.__traceback__)[-3:]:
+            donde.append(f"{os.path.basename(fr.filename)}:{fr.lineno} {fr.name}")
         app = App.get_running_app()
         if app is not None and not getattr(app, "_mostrando_error", False):
             app._mostrando_error = True
@@ -64,8 +85,8 @@ class _Errores(ExceptionHandler):
                 app._mostrando_error = False
             try:
                 ui.info("Ocurrió un error", f"Algo falló en esta acción ({type(inst).__name__}: {inst}). La app sigue "
-                        "abierta y lo que ya estaba guardado está a salvo.\n\nEl detalle quedó en el registro de "
-                        f"errores:\n{RUTA_LOG}", listo)
+                        "abierta y lo que ya estaba guardado está a salvo.\n\nDónde: " + " → ".join(donde) +
+                        f"\n\nEl detalle quedó en:\n{ruta}", listo)
             except Exception:
                 app._mostrando_error = False
         return ExceptionManager.PASS
