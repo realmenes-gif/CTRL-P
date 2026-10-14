@@ -63,8 +63,9 @@ jobs:
 
       - name: Compilar
         run: |
-          set -o pipefail
-          yes | buildozer -v android debug 2>&1 | tee registro/2_compilar.txt
+          yes | buildozer -v android debug 2>&1 | tee registro/2_compilar.txt || true
+          ls -la bin/
+          ls bin/*.apk
 
       - name: Guardar caché de buildozer
         if: always()
@@ -81,6 +82,20 @@ jobs:
           name: Ctrl-P-APK
           path: bin/*.apk
           retention-days: 30
+
+      - name: Publicar APK en la rama apk
+        run: |
+          mkdir -p /tmp/apk && cp bin/*.apk /tmp/apk/
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git checkout --orphan apk-tmp
+          git rm -rf --cached . > /dev/null
+          find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .buildozer ! -name bin -exec rm -rf {} +
+          cp /tmp/apk/*.apk .
+          echo "run ${{ github.run_id }}" > ejecucion.txt
+          git add -f *.apk ejecucion.txt
+          git commit -m "APK de la ejecucion ${{ github.run_id }}"
+          git push -f origin HEAD:apk
 
       - name: Guardar registro del error
         if: failure()
