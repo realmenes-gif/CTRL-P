@@ -11,6 +11,18 @@ import traceback
 
 _RUTAS = []
 
+# En Android la carpeta "personal" (HOME) apunta a /data, donde la app no puede escribir.
+# Se usa la carpeta privada de la app para la configuracion y los temporales.
+if os.environ.get("ANDROID_PRIVATE") or os.environ.get("ANDROID_ARGUMENT") is not None:
+    _priv = os.environ.get("ANDROID_PRIVATE") or os.path.dirname(os.path.abspath(__file__))
+    os.environ["HOME"] = _priv
+    _tmp = os.path.join(_priv, "tmp")
+    try:
+        os.makedirs(_tmp, exist_ok=True)
+        os.environ["TMPDIR"] = _tmp
+    except Exception:
+        pass
+
 
 def _rutas_registro():
     if _RUTAS:
@@ -40,6 +52,13 @@ def _escribir(texto, modo="a"):
 
 def paso(texto):
     _escribir(f"{time.strftime('%H:%M:%S')}  {texto}\n")
+    if texto == "inicio de sesion en pantalla":
+        # Abrio bien: no dejar el archivo de diagnostico en Descargas ni en Documentos.
+        for r in _rutas_registro()[:2]:
+            try:
+                os.remove(r)
+            except Exception:
+                pass
 
 
 _escribir(f"Ctrl-P · arranque {time.strftime('%Y-%m-%d %H:%M:%S')}\nPython {sys.version}\n", "w")

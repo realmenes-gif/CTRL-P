@@ -56,6 +56,7 @@ jobs:
         with:
           path: |
             ~/.buildozer
+            ~/.android
             .buildozer
           key: buildozer-${{ hashFiles('buildozer.spec') }}-${{ github.run_id }}
           restore-keys: |
@@ -73,6 +74,7 @@ jobs:
         with:
           path: |
             ~/.buildozer
+            ~/.android
             .buildozer
           key: buildozer-${{ hashFiles('buildozer.spec') }}-${{ github.run_id }}
 
