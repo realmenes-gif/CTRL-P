@@ -292,6 +292,7 @@ class Login(BoxLayout):
         self.caja_clave = Columna(espacio=6)
         f.add_widget(self.caja_clave)
         self.e_clave = Campo("", clave=True, alto=50, tam=17, al_enter=self.entrar)
+        self.f_clave = ui.con_ver(self.e_clave)
         self.l_vista = Etiqueta("", 13, color="texto2")
         f.add_widget(self.l_vista)
         self.l_err = Etiqueta("", 13, color="rojo")
@@ -308,7 +309,7 @@ class Login(BoxLayout):
         req = core.requiere_clave(n, e)
         if req and not self.caja_clave.children:
             self.caja_clave.add_widget(Etiqueta("Contraseña", 14, True))
-            self.caja_clave.add_widget(self.e_clave)
+            self.caja_clave.add_widget(self.f_clave)
             self.caja_clave.add_widget(Etiqueta("Este usuario está protegido con contraseña.", 12, color="texto2"))
         elif not req and self.caja_clave.children:
             self.caja_clave.clear_widgets()

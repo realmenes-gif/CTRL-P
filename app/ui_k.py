@@ -383,6 +383,8 @@ class Fila(BoxLayout):
 
     def add_widget(self, w, *a, **kw):
         if isinstance(w, Etiqueta):        # textos centrados en vertical dentro de la fila
+            if w.parent is not None:       # se vuelve a poner (al rearmar la fila): soltarla de su caja anterior
+                w.parent.remove_widget(w)
             caja = AnchorLayout(anchor_y="center")
             caja.size_hint_x = w.size_hint_x
             if w.size_hint_x is None:
@@ -700,6 +702,21 @@ def opciones(titulo, texto, textos, al_elegir, primario=None):
     return d
 
 
+def con_ver(campo):
+    """Campo de contrasena con boton «Ver» / «Ocultar» al lado."""
+    fila = BoxLayout(orientation="horizontal", size_hint_y=None, height=campo.height, spacing=dp(8))
+    b = Boton("Ver", ancho=96, alto=campo.height / dp(1))
+
+    def alternar():
+        campo.password = not campo.password
+        b.text = "Ver" if campo.password else "Ocultar"
+    b.bind(on_release=lambda *_: alternar())
+    fila.add_widget(campo)
+    fila.add_widget(b)
+    fila.campo = campo
+    return fila
+
+
 def formulario(titulo, subtitulo, campos, textos, al_aceptar, validar=None):
     """campos: [(clave, etiqueta, es_clave, inicial[, mayus])] -> al_aceptar(dict) (no se llama si cancela)."""
     d = Dialogo(titulo)
@@ -712,7 +729,7 @@ def formulario(titulo, subtitulo, campos, textos, al_aceptar, validar=None):
         d.cuerpo.add_widget(Etiqueta(et, 13, True))
         e = Campo(ini, clave=es_clave, mayus=may)
         ent[k] = e
-        d.cuerpo.add_widget(e)
+        d.cuerpo.add_widget(con_ver(e) if es_clave else e)
     err = Etiqueta("", 13, color="rojo")
     d.cuerpo.add_widget(err)
 
