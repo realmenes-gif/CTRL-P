@@ -228,6 +228,7 @@ class PaginaRegistro(Pagina):
 
     def __init__(self, app, **kw):
         super().__init__(app, **kw)
+        self.totales_viejos = False
         self.fecha = core.hoy_iso()
         cd = self.cab_der
         cd.add_widget(Boton("◀ Partidas", ancho=120, al_tocar=self._alternar_arbol))
@@ -282,6 +283,10 @@ class PaginaRegistro(Pagina):
 
     def refrescar(self):
         if not self.p:
+            return
+        if self.it and self.modelo and self.pendientes():
+            # hay cantidades escritas sin guardar: se recalculan los totales sin borrar lo escrito
+            self.recalcular(solo_valores=True)
             return
         self._marcas_dia()
         self.arbol.cargar()
@@ -366,6 +371,8 @@ class PaginaRegistro(Pagina):
     def guardar_pendiente(self):
         if self.it and self.modelo and self.pendientes():
             return self.guardar(preguntar_plano=False)
+        if self.it and self.modelo and self.totales_viejos:
+            self.recalcular(solo_valores=True)      # Guardar también deja los totales al día
         return True
 
     # ---------------------------------------------------------------- armado
@@ -613,11 +620,29 @@ class PaginaRegistro(Pagina):
         if f is None or f[campo] == texto:
             return
         f[campo] = texto
-        Clock.unschedule(self._recalc_ev)
-        Clock.schedule_once(self._recalc_ev, 0.25)
+        if campo == "v":
+            # Al escribir solo se actualiza esa fila; los totales con Refrescar o Guardar.
+            self._pintar_fila(key)
+            self.totales_viejos = True
+        self._estado()
 
-    def _recalc_ev(self, *_):
-        self.recalcular(solo_valores=True)
+    def _pintar_fila(self, key):
+        f = self.modelo.get(key)
+        d = self._filas_por_key.get(key) if getattr(self, "_filas_por_key", None) else None
+        if f is None or d is None:
+            return
+        v = leer_num(f["v"])
+        hoy = 0.0 if v in (None, "error") else v
+        raw_tot = f["ant"] + f["plano"] + hoy
+        base = f["base"]
+        d["vals"][4] = fmt(raw_tot)
+        d["vals"][5] = fmt_pct(core.pct(raw_tot, base)) if base else "—"
+        d["vals"][6] = fmt(base - raw_tot) if base else "—"
+        d["saldo_neg"] = bool(base and base - raw_tot < -1e-9)
+        f["borde"] = "error" if v == "error" else ("escrito" if hoy else "")
+        for w in list(self.rv.layout_manager.children if self.rv.layout_manager else []):
+            if isinstance(w, FilaRegistro) and w._key == key:
+                w.actualizar_valores()
 
     # ---------------------------------------------------------------- calculo (igual que en la computadora)
     def recalcular(self, solo_valores=False):
@@ -627,7 +652,9 @@ class PaginaRegistro(Pagina):
         it = self.it
         cant = it["cantidad"] or 0
         vals = {}
+        self.totales_viejos = False
         filas_por_key = {d["key"]: d for d in self.todas if d.get("tipo") == "hoja"}
+        self._filas_por_key = filas_por_key
         for key, f in self.modelo.items():
             v = leer_num(f["v"])
             hoy = 0.0 if v in (None, "error") else v
@@ -708,8 +735,12 @@ class PaginaRegistro(Pagina):
         n = self.pendientes() if self.modelo else 0
         self.l_estado.text = (f"{n} avances sin guardar · {core.fecha_txt(self.fecha)}" if n
                               else f"Fecha de registro: {core.fecha_txt(self.fecha)}")
+        if self.totales_viejos and self.modelo:
+            self.l_estado.text += "  ·  Totales sin actualizar: tocá Refrescar o Guardar"
         if self.it and self.modelo:
-            tp = self.p.total_presupuesto() or 1
+            if not getattr(self, "_tp", None) or not self.totales_viejos:
+                self._tp = self.p.total_presupuesto() or 1
+            tp = self._tp
             m = getattr(self, "monto_dia", 0)
             self.l_monto.text = (f"Monto cobrable del día en esta partida: {self.p.get_meta('moneda', 'US$')} "
                                  f"{fmt(m)} · {fmt_pct(m / tp, 3)} del presupuesto")
