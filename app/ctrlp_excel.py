@@ -88,17 +88,21 @@ def _tiene_avance(r):
     return abs(r.get("tot", 0)) > 1e-9 or abs(r.get("per", 0)) > 1e-9
 
 
-def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, solo_con_avance=False):
-    """modo: 'estado' (desde=hasta=fecha) o 'periodo'. detalle: '', 'dia', 'semana'."""
+def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, solo_con_avance=False,
+                     solo_contractual=False):
+    """modo: 'estado' (desde=hasta=fecha) o 'periodo'. detalle: '', 'dia', 'semana'.
+    solo_contractual: en partidas repartidas por ubicacion, solo lo que cabe en la cantidad de cada ubicacion."""
     if modo == "estado":
         desde = hasta
     visibles = set(visibles or [k for k, _ in COLUMNAS_OPCIONALES])
-    calc = Calculo(p, desde, hasta)
+    calc = Calculo(p, desde, hasta, solo_contractual)
     cortes = buckets(desde, hasta, detalle) if (detalle and modo == "periodo") else []
-    ex_buckets = [p.ejecutado(hasta=b1, desde=b0) for _, b0, b1 in cortes]
+    ex_buckets = [p.ejecutado_periodo(b0, b1, solo_contractual) for _, b0, b1 in cortes]
     obs = p.observaciones(desde, hasta) if "obs" in visibles else {}
     wb = openpyxl.Workbook()
     ctx = _contexto(p, modo, desde, hasta)
+    if solo_contractual:
+        ctx += " · solo lo contractual"
     mon = p.get_meta("moneda", "US$") or "US$"
 
     # ------------------------------------------------------------ Resumen
@@ -111,7 +115,8 @@ def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, sol
              ("Avance financiero " + ("del día" if modo == "estado" else "del período"), t["m_per"], t["p_per"]),
              ("Avance financiero acumulado total", t["m_tot"], t["p_tot"]),
              ("Saldo por ejecutar", t["total"] - t["m_tot"], t["p_saldo"]),
-             ("Excedente no cobrable (acumulado)", t["m_exc"], None)]
+             ("Fuera de lo contractual (acumulado)" if solo_contractual else "Excedente no cobrable (acumulado)",
+              t["m_exc"], None)]
     _fila_enc(ws, f, ["Concepto", f"Monto ({mon})", "% del presupuesto"])
     for k, (n, m, pc) in enumerate(filas, start=f + 1):
         _poner(ws, k, 1, n, font=F_B if k in (f + 3, f + 4) else None)
@@ -267,7 +272,7 @@ def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, sol
              ("m_per", f"Monto {'del día' if modo == 'estado' else 'del período'} ({mon})", 16),
              ("m_tot", f"Monto acumulado ({mon})", 16), ("m_saldo", f"Saldo ({mon})", 16),
              ("a_per", "% aporte " + ("del día" if modo == "estado" else "del período"), 12),
-             ("a_tot", "% aporte acumulado", 12), ("m_exc", f"Excedente no cobrable ({mon})", 16)]
+             ("a_tot", "% aporte acumulado", 12), ("m_exc", (f"Fuera de lo contractual ({mon})" if solo_contractual else f"Excedente no cobrable ({mon})"), 16)]
     _fila_enc(ws, f, [c[1] for c in fcols])
     for k, (_, _, w) in enumerate(fcols, start=1):
         ws.column_dimensions[get_column_letter(k)].width = w
@@ -329,9 +334,9 @@ def _agrupar(ws, cols):
     ws.sheet_properties.outlinePr.summaryRight = False
 
 
-def exportar_corte(p, ruta, desde, hasta):
+def exportar_corte(p, ruta, desde, hasta, solo_contractual=False):
     """Corte de estimacion: presupuesto completo + cantidad y monto cobrables del periodo."""
-    calc = Calculo(p, desde, hasta)
+    calc = Calculo(p, desde, hasta, solo_contractual)
     mon = p.get_meta("moneda", "US$") or "US$"
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -342,6 +347,7 @@ def exportar_corte(p, ruta, desde, hasta):
                 f"Corte de estimación · período del {fecha_txt(desde)} al {fecha_txt(hasta)}")
     ws["A2"].font = Font(name="Calibri", bold=True, size=11)
     ws["A3"] = (f"Presupuesto V{p.version_presupuesto} · cantidades cobrables (con tope contractual) · "
+                + ("solo lo contractual · " if solo_contractual else "") +
                 f"generado {ahora()} por {p.usuario}")
     ws["A3"].font = F_SUB
     enc = ["ITEM", "DESCRIPCION", "UNIDAD", "CANTIDAD", "COSTO UNITARIO", "COSTO TOTAL",

@@ -1464,6 +1464,47 @@ class Proyecto:
             res.setdefault(r["item"], {})[(r["nivel"], r["equipo"] or "", r["tramo"] or "")] = r["s"] or 0.0
         return res
 
+    def ejecutado_contractual(self, hasta=None):
+        """Como ejecutado(hasta), pero en las partidas repartidas por ubicacion (con cantidad contractual por
+        ubicacion) solo cuentan las ubicaciones que tienen cantidad, y cada una hasta su cantidad
+        (con los topes de equipos y tramos). Las partidas sin repartir quedan igual."""
+        ex = self.ejecutado(hasta=hasta)
+        cont = self.todo_contractual()
+        dg = self.ejecutado_desglose(hasta=hasta)
+        eqs, trs = self.estructura_topes()
+        cant = {r["id"]: r["cantidad"] for r in self.con.execute("SELECT id, cantidad FROM items")}
+        res = {}
+        for iid, nvs in ex.items():
+            c = cont.get(iid)
+            if not c:
+                res[iid] = dict(nvs)
+                continue
+            d = dg.get(iid, {})
+            out = {}
+            for nv in nvs:
+                if nv not in c:
+                    continue
+                sub = {k: v for k, v in d.items() if k[0] == nv}
+                out[nv] = cobrable_desglose(c[nv], {nv: c[nv]}, eqs.get(iid, {}), trs.get(iid, {}), sub)[0]
+            tope = cant.get(iid) or 0.0
+            suma = sum(out.values())
+            if suma > tope + EPS and suma > EPS:
+                out = {k: v * tope / suma for k, v in out.items()}
+            res[iid] = out
+        return res
+
+    def ejecutado_periodo(self, desde, hasta, solo_contractual=False):
+        """Ejecutado entre desde y hasta. Con solo_contractual, la diferencia de los acumulados con tope."""
+        if not solo_contractual:
+            return self.ejecutado(hasta=hasta, desde=desde)
+        t = self.ejecutado_contractual(hasta=hasta)
+        a = self.ejecutado_contractual(hasta=dia_anterior(desde))
+        res = {}
+        for iid in set(t) | set(a):
+            nvs = set(t.get(iid, {})) | set(a.get(iid, {}))
+            res[iid] = {nv: t.get(iid, {}).get(nv, 0.0) - a.get(iid, {}).get(nv, 0.0) for nv in nvs}
+        return res
+
     def estructura_topes(self):
         """Cantidades asignadas de equipos y tramos de todas las partidas que tienen ese detalle."""
         det = {r["item"]: dict(r) for r in self.con.execute("SELECT * FROM detalle")}
@@ -2047,9 +2088,10 @@ def pct(a, b):
 class Calculo:
     """Calculo completo para un corte: ant (antes de 'desde'), per (desde..hasta), tot (hasta)."""
 
-    def __init__(self, proyecto, desde, hasta):
+    def __init__(self, proyecto, desde, hasta, solo_contractual=False):
         self.p = proyecto
         self.desde, self.hasta = desde, hasta
+        self.solo = bool(solo_contractual)
         self.items = proyecto.items()
         self.por_id = {i["id"]: i for i in self.items}
         self.cont = proyecto.todo_contractual()
@@ -2060,6 +2102,16 @@ class Calculo:
         self.dg_tot = proyecto.ejecutado_desglose(hasta=hasta)
         self.dg_ant = proyecto.ejecutado_desglose(hasta=dia_anterior(desde))
         self.top_eq, self.top_tr = proyecto.estructura_topes()
+        self.ex_tot_bruto, self.ex_ant_bruto = self.ex_tot, self.ex_ant
+        if self.solo:
+            # Solo lo contractual: en partidas repartidas, fuera las ubicaciones sin cantidad y lo que pasa de ella
+            self.ex_tot = proyecto.ejecutado_contractual(hasta=hasta)
+            self.ex_ant = proyecto.ejecutado_contractual(hasta=dia_anterior(desde))
+            for dg in (self.dg_tot, self.dg_ant):
+                for iid in list(dg):
+                    c = self.cont.get(iid)
+                    if c:
+                        dg[iid] = {k: v for k, v in dg[iid].items() if k[0] in c}
         self.total_presu = proyecto.total_presupuesto()
         self.res = {}
         for it in self.items:
@@ -2076,6 +2128,11 @@ class Calculo:
         cob_a, exc_a = cobrable_desglose(it["cantidad"], c, eqs, trs, self.dg_ant.get(it["id"], {}))
         tot = sum(et.values())
         ant = sum(ea.values())
+        if self.solo and c:
+            # lo que queda fuera (sin cantidad o sobre la cantidad) se informa como excedente
+            cob_t, cob_a = min(cob_t, tot), min(cob_a, ant)
+            exc_t = max(sum(self.ex_tot_bruto.get(it["id"], {}).values()) - cob_t, 0.0)
+            exc_a = max(sum(self.ex_ant_bruto.get(it["id"], {}).values()) - cob_a, 0.0)
         pu = it["pu"] or 0.0
         cant = it["cantidad"] or 0.0
         return {
@@ -2142,6 +2199,8 @@ class Calculo:
                 if fija and nv != fija:
                     continue
                 c = r["cont"].get(nv)
+                if self.solo and r["cont"] and c is None:
+                    continue            # solo lo contractual: la ubicacion sin cantidad no se muestra
                 a = r["nv_ant"].get(nv, 0.0)
                 t = r["nv_tot"].get(nv, 0.0)
                 filas.append({"nivel": nv, "nombre": e["nombre"] if e["es_area"] else n["nombre"],
@@ -2203,6 +2262,17 @@ def _hojas_calc(self, iid):
     for nv in res:
         res[nv].sort(key=lambda h: h["orden"])
         res[nv] = [h for h in res[nv] if abs(h["tot"]) > EPS or h["contractual"] or h["tramo"] or h["equipo"]]
+    if getattr(self, "solo", False) and self.cont.get(iid):
+        # solo lo contractual: el detalle de cada ubicacion se ajusta a lo que cuenta en esa ubicacion
+        for nv, filas in res.items():
+            for clave, bruto, neto in (("tot", self.ex_tot_bruto, self.ex_tot), ("ant", self.ex_ant_bruto, self.ex_ant)):
+                b = bruto.get(iid, {}).get(nv, 0.0)
+                n = neto.get(iid, {}).get(nv, 0.0)
+                f = (n / b) if abs(b) > EPS else 0.0
+                for h in filas:
+                    h[clave] = h[clave] * f
+            for h in filas:
+                h["per"] = h["tot"] - h["ant"]
     return res
 
 

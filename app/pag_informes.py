@@ -159,6 +159,15 @@ class PaginaInformes(Pagina):
         anc.add_widget(self.sw_solo)
         g.add_widget(anc)
         ws.append(g)
+        g = Fila(alto=40, espacio=8)
+        g.size_hint_x = None
+        g.width = dp(250)
+        g.add_widget(Etiqueta("Ver solo lo contractual", 13, color="texto2"))
+        self.sw_contr = Interruptor(False, al_cambiar=lambda _: self.generar())
+        anc = AnchorLayout(size_hint_x=None, width=dp(56))
+        anc.add_widget(self.sw_contr)
+        g.add_widget(anc)
+        ws.append(g)
         g = Fila(alto=40, espacio=6)
         g.size_hint_x = None
         g.width = dp(100 + 96 + 170 + 130 + 18)
@@ -319,21 +328,22 @@ class PaginaInformes(Pagina):
         if modo != "estado":
             self.e_desde.text = core.fecha_txt(desde)
         self.e_hasta.text = core.fecha_txt(hasta)
-        calc = core.Calculo(self.p, desde, hasta)
+        contr = self.sw_contr.activo
+        calc = core.Calculo(self.p, desde, hasta, contr)
         t = calc.totales()
         mon = self.p.get_meta("moneda", "US$")
         estado = modo == "estado"
         self.poner_sub((f"Estado al {core.fecha_txt(hasta)}" if estado else
                         f"Período del {core.fecha_txt(desde)} al {core.fecha_txt(hasta)}") +
-                       f" · presupuesto V{self.p.version_presupuesto}")
+                       f" · presupuesto V{self.p.version_presupuesto}" + (" · solo lo contractual" if contr else ""))
         datos = [("Acumulado anterior", fmt_pct(t["p_ant"], 2), f"{mon} {fmt(t['m_ant'])}"),
                  ("Avance financiero del día" if estado else "Avance financiero del período", fmt_pct(t["p_per"], 2),
                   f"{mon} {fmt(t['m_per'])}"),
                  ("Acumulado total", fmt_pct(t["p_tot"], 2), f"{mon} {fmt(t['m_tot'])}"),
                  ("Saldo por ejecutar", fmt_pct(t["p_saldo"], 2), f"{mon} {fmt(t['total'] - t['m_tot'])}"),
-                 ("Excedente no cobrable", f"{mon} {fmt(t['m_exc'])}",
+                 ("Fuera de lo contractual" if contr else "Excedente no cobrable", f"{mon} {fmt(t['m_exc'])}",
                   f"{sum(1 for i in calc.items if i['tipo'] == 'P' and calc.res[i['id']]['exc_tot'] > 1e-9)} partidas "
-                  "sobre su contractual")]
+                  + ("con avance que no cuenta" if contr else "sobre su contractual"))]
         for (a, b, c), (x, y, z) in zip(self.kpis, datos):
             a.text, b.text, c.text = x, y, z
         falta = max(t["total"] - t["m_tot"], 0.0)
@@ -375,7 +385,7 @@ class PaginaInformes(Pagina):
         ex_b = []
         for k, (et, b0, b1) in enumerate(cortes):
             cols.append((f"b{k}", et, 96, "right"))
-            ex_b.append(self.p.ejecutado(hasta=b1, desde=b0))
+            ex_b.append(self.p.ejecutado_periodo(b0, b1, self.sw_contr.activo))
         cols.append(("per", "Ejecutado del día" if estado else "Período", 112, "right"))
         if not estado and "p_per" in vis:
             cols.append(("p_per", "% período", 86, "right"))
@@ -665,7 +675,8 @@ class PaginaInformes(Pagina):
 
         def elegido(ruta):
             try:
-                xl.exportar_informe(self.p, ruta, modo, desde, hasta, det, self.visibles, self.sw_solo.activo)
+                xl.exportar_informe(self.p, ruta, modo, desde, hasta, det, self.visibles, self.sw_solo.activo,
+                                    self.sw_contr.activo)
             except PermissionError:
                 ui.info("Exportar", "No se pudo guardar: el archivo está abierto en otra app.")
                 return
@@ -686,7 +697,7 @@ class PaginaInformes(Pagina):
 
         def elegido(ruta):
             try:
-                xl.exportar_corte(self.p, ruta, desde, hasta)
+                xl.exportar_corte(self.p, ruta, desde, hasta, self.sw_contr.activo)
             except PermissionError:
                 ui.info("Exportar", "No se pudo guardar: el archivo está abierto en otra app.")
                 return
