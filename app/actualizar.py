@@ -36,6 +36,10 @@ def _num(v):
         return (0,)
 
 
+def url_descarga(info):
+    return "https://github.com/realmenes-gif/CTRL-P/raw/apk/" + info["apk"]
+
+
 def version_actual():
     return novedades.VERSION_INTERNA
 

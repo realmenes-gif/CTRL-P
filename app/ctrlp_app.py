@@ -507,66 +507,24 @@ class CtrlPApp(App):
                 return
             nov = "\n".join("• " + c for c in r.get("novedades", [])[:12])
             ui.preguntar("Hay una versión nueva",
-                         f"Ctrl-P {r['version']} (tenés la {act.version_actual()}).\n\n{nov}\n\nSe descarga, se "
-                         "comprueba y se abre el instalador de Android: tocá «Actualizar». Los proyectos y la sesión de "
-                         "Google se mantienen.", lambda si: si and self._descargar_actualizacion(r),
-                         si="Actualizar", no="Después")
+                         f"Ctrl-P {r['version']} (tenés la {act.version_actual()}).\n\n{nov}\n\nSe descarga el APK con "
+                         "el navegador y lo instalás encima. Los proyectos y la sesión de Google se mantienen.",
+                         lambda si: si and self._descargar_actualizacion(r), si="Descargar", no="Después")
         threading.Thread(target=hilo, daemon=True).start()
 
     def _descargar_actualizacion(self, info):
-        import threading
+        """Abre la descarga del APK en el navegador; al terminar se abre el archivo y se instala encima."""
         import actualizar as act
         if self.p and self.p.sucio:
             self.guardar()
-        d = ui.Dialogo("Descargando la actualización", ancho=480)
-        d._sin_atras = True
-        lbl = Etiqueta("0 %", 16, True, color="acento")
-        d.cuerpo.add_widget(Etiqueta(f"Ctrl-P {info['version']}", 14, color="texto2"))
-        d.cuerpo.add_widget(lbl)
-        cancel = {"si": False}
-        d.botones(["Cancelar"], 0, lambda k: cancel.update(si=True))
-        d.open()
-
-        def avance(f):
-            Clock.schedule_once(lambda *_: setattr(lbl, "text", f"{int(f * 100)} %"), 0)
-
-        def hilo():
-            try:
-                ruta, err = act.descargar(info, avance, lambda: cancel["si"]), None
-            except act.ErrorActualizar as e:
-                ruta, err = None, str(e)
-            except Exception as e:
-                ruta, err = None, f"No se pudo descargar: {e}"
-            Clock.schedule_once(lambda *_: listo(ruta, err), 0)
-
-        def listo(ruta, err):
-            d.dismiss()
-            if err:
-                if not cancel["si"]:
-                    ui.info("Actualización", err)
-                return
-            self._instalar_actualizacion(ruta, info)
-        threading.Thread(target=hilo, daemon=True).start()
-
-    def _instalar_actualizacion(self, ruta, info):
-        import actualizar as act
-        if not act.puede_instalar():
-            def resp(si):
-                if si:
-                    self._ruta_act = (ruta, info)
-                    act.abrir_permiso_instalar()
-            ui.preguntar("Permiso para actualizar",
-                         "Android tiene que dejar que Ctrl-P instale su actualización (se pide una sola vez).\n\nEn la "
-                         "pantalla que se abre, activá «Permitir de esta fuente» y volvé a Ctrl-P: la instalación "
-                         "sigue sola.", resp, si="Dar permiso", no="Después")
-            return
-        try:
-            act.instalar(ruta)
-        except Exception as e:
-            registrar_error("Actualización", traceback.format_exc())
-            ui.preguntar("Actualización", f"No se pudo abrir el instalador de Android ({e}).\n\n¿Descargarla con el "
-                                          "navegador? Al terminar, abrí el archivo descargado e instalalo encima.",
-                         lambda si: si and ui_abrir(act.BASE + info["apk"]), si="Abrir navegador", no="Cerrar")
+        url = act.url_descarga(info)
+        ui_abrir(url)
+        ui.info("Descargar la actualización",
+                f"Se abrió el navegador para descargar Ctrl-P {info['version']}.\n\n"
+                "1. Esperá que termine la descarga.\n"
+                "2. Tocá el archivo descargado (en la notificación o en Descargas).\n"
+                "3. Tocá «Actualizar» o «Instalar». Si Android lo pide, permití instalar desde el navegador.\n\n"
+                "Los proyectos y la sesión de Google se mantienen.")
 
     def construir(self):
         import paginas
@@ -893,12 +851,6 @@ class CtrlPApp(App):
         return True
 
     def on_resume(self):
-        pend = getattr(self, "_ruta_act", None)
-        if pend:                                   # volvio de dar el permiso de instalar: sigue la actualizacion
-            import actualizar as act
-            if act.puede_instalar():
-                self._ruta_act = None
-                Clock.schedule_once(lambda *_: self._instalar_actualizacion(*pend), 0.5)
         if self.cfg.get("apariencia", "Automático") == "Automático":
             antes = ui.oscuro()
             self._aplicar_tema()
