@@ -336,6 +336,10 @@ def _ancho_px(ws, col):
 def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, usados=None, estimacion=False):
     """estimacion: para el corte de estimacion, una sola columna «ESTE PERÍODO» con la suma del periodo
     (sin el desglose por semana)."""
+    import ctrlp_formatos                      # actividades con formato propio (formatos_de_memorias.xlsm)
+    propia = ctrlp_formatos.hoja_propia(wb, p, it, desde, hasta, enc, solo_contractual, usados, estimacion)
+    if propia is not None:
+        return propia
     cortes = [(iso_a_fecha(desde), iso_a_fecha(hasta))] if estimacion else semanas(desde, hasta, p.inicio_semana)
     d = datos_partida(p, it, desde, hasta, cortes, solo_contractual)
     usados = set() if usados is None else usados

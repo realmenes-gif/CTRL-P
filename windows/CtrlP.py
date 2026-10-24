@@ -30,12 +30,16 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.9"
-VERSION_INTERNA = "1.9"
+VERSION = "v1.10"
+VERSION_INTERNA = "1.10"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.10", [
+        "Memorias de cálculo con el formato propio de cada actividad (según «formatos de memorias»): por espacio o edificio, edificio con sus niveles, niveles en sub-columnas, secciones por nivel con tipos o equipos, sectores y tramos, fachadas con costo y pago por hitos con sus requisitos y nota. Las actividades sin formato propio siguen con el general.",
+        "En todas: cantidad de diseño, anterior, este período (por semana, o «ESTE PERÍODO» en el corte de estimación), acumulado y pendiente, más las columnas especiales de cada formato (% de avance, costo unitario, ejecutado por hito…). El cálculo es el mismo; encabezado con logos y sin firmas.",
+    ]),
     ("v1.9", [
         "En línea: las ventanas de espera («Consultando…», «Bajando…») tienen «Cancelar» y la X funciona; después de 5 segundos muestran cuánto llevan. Lo que sube o envía cambios no se cancela, para no dejarlo a medias.",
         "En línea: si Google no responde, avisa en 1 minuto (antes podía quedarse esperando) y anota en errores.log cuánto tardó cada consulta.",
