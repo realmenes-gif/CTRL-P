@@ -87,8 +87,23 @@ def _bytes_java(arr):
     return bytes((b + 256) % 256 for b in arr)
 
 
+def anotar(texto):
+    """Diagnostico en errores.log (sin claves ni datos del proyecto)."""
+    try:
+        with open(os.path.join(core.carpeta_config(), "errores.log"), "a", encoding="utf-8") as f:
+            f.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} · En línea\n{texto}\n")
+    except Exception:
+        pass
+
+
+_METODO = []
+
+
 def _gcm(modo, llave, nonce, datos):
-    """AES-256-GCM (texto || etiqueta de 16 bytes, igual que la computadora). modo: 'c' cifrar / 'd' descifrar."""
+    """AES-256-GCM (texto || etiqueta de 16 bytes, igual que la computadora). modo: 'c' cifrar / 'd' descifrar.
+    Orden: cryptography (PC) -> OpenSSL del APK (rapido) -> cifrado de Android -> Python puro (lento)."""
+    t0 = time.time()
+    r = metodo = None
     try:
         from cryptography.exceptions import InvalidTag
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -99,31 +114,48 @@ def _gcm(modo, llave, nonce, datos):
     except ImportError:
         pass
     try:
-        from jnius import JavaException, autoclass
-        Cipher = autoclass("javax.crypto.Cipher")
-        SecretKeySpec = autoclass("javax.crypto.spec.SecretKeySpec")
-        GCMParameterSpec = autoclass("javax.crypto.spec.GCMParameterSpec")
-        c = Cipher.getInstance("AES/GCM/NoPadding")
-        c.init(Cipher.ENCRYPT_MODE if modo == "c" else Cipher.DECRYPT_MODE, SecretKeySpec(bytearray(llave), "AES"),
-               GCMParameterSpec(128, bytearray(nonce)))
-        c.updateAAD(bytearray(ENCABEZADO))
-    except Exception:
-        c = None                     # sin Android (o algo falló): AES en Python puro, mismo resultado
-    if c is not None:
+        import openssl_gcm
         try:
-            r = _bytes_java(c.doFinal(bytearray(datos)))
-            if len(r) == len(datos) + (16 if modo == "c" else -16):
-                return r
-        except JavaException:
-            if modo == "d":
-                raise ClaveIncorrecta("La clave del proyecto no es correcta.")
-        except Exception:
-            pass
-    import aes_gcm
-    try:
-        return (aes_gcm.cifrar if modo == "c" else aes_gcm.descifrar)(llave, nonce, datos, ENCABEZADO)
-    except aes_gcm.EtiquetaInvalida:
-        raise ClaveIncorrecta("La clave del proyecto no es correcta.")
+            r = (openssl_gcm.cifrar if modo == "c" else openssl_gcm.descifrar)(llave, nonce, datos, ENCABEZADO)
+            metodo = "openssl " + openssl_gcm._lib()[1]
+        except openssl_gcm.EtiquetaInvalida:
+            raise ClaveIncorrecta("La clave del proyecto no es correcta.")
+    except ClaveIncorrecta:
+        raise
+    except Exception as e:
+        anotar(f"OpenSSL no disponible para el cifrado: {e}")
+    if r is None:
+        try:
+            from jnius import JavaException, autoclass
+            Cipher = autoclass("javax.crypto.Cipher")
+            SecretKeySpec = autoclass("javax.crypto.spec.SecretKeySpec")
+            GCMParameterSpec = autoclass("javax.crypto.spec.GCMParameterSpec")
+            c = Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(Cipher.ENCRYPT_MODE if modo == "c" else Cipher.DECRYPT_MODE, SecretKeySpec(bytearray(llave), "AES"),
+                   GCMParameterSpec(128, bytearray(nonce)))
+            c.updateAAD(bytearray(ENCABEZADO))
+            try:
+                x = _bytes_java(c.doFinal(bytearray(datos)))
+                if len(x) == len(datos) + (16 if modo == "c" else -16):
+                    r, metodo = x, "java"
+            except JavaException:
+                if modo == "d":
+                    raise ClaveIncorrecta("La clave del proyecto no es correcta.")
+        except ClaveIncorrecta:
+            raise
+        except Exception as e:
+            anotar(f"Cifrado de Android no disponible: {e}")
+    if r is None:
+        import aes_gcm
+        try:
+            r = (aes_gcm.cifrar if modo == "c" else aes_gcm.descifrar)(llave, nonce, datos, ENCABEZADO)
+            metodo = "python"
+        except aes_gcm.EtiquetaInvalida:
+            raise ClaveIncorrecta("La clave del proyecto no es correcta.")
+    if len(datos) > 100000 or metodo != (_METODO[0] if _METODO else None):
+        _METODO[:] = [metodo]
+        anotar(f"{'cifrar' if modo == 'c' else 'descifrar'} {len(datos) / 1e6:.2f} MB con {metodo} en {time.time() - t0:.1f} s")
+    return r
 
 
 def cifrar(datos, clave):

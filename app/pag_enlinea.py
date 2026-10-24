@@ -64,11 +64,14 @@ def correr(flujo, al_fallar=None):
                 al_fallar()
             return
         except nb.ErrorNube as e:
+            nb.anotar(f"Error: {e}")
             ui.info("En línea", str(e))
             if al_fallar:
                 al_fallar()
             return
         except Exception as e:
+            import traceback as _tb
+            nb.anotar("Error inesperado:\n" + _tb.format_exc())
             ui.info("En línea", f"Ocurrió un error: {e}")
             try:
                 import traceback
@@ -289,8 +292,10 @@ class PaginaEnLinea(Pagina):
             if v0 and v0["proyecto"] == pr["id"]:
                 yield avisar("En línea", "Ese proyecto ya está abierto. Usá «Sincronizar ahora».")
                 return
+            nb.anotar(f"Abrir «{pr['nombre']}» v{pr['version']}: pidiendo la clave")
             c = yield from self._clave(pr["id"], pr["nombre"], pr.get("verificador", ""))
             if not c:
+                nb.anotar("Abrir: sin clave (cancelado)")
                 return
             nombre = "".join(ch for ch in pr["nombre"] if ch not in '\\/:*?"<>|').strip() or "Proyecto"
             ruta = os.path.join(nb.carpeta_en_linea(), f"{nombre}{core.EXT}")
@@ -306,7 +311,9 @@ class PaginaEnLinea(Pagina):
                     return
                 if not (ya and ya["proyecto"] == pr["id"]):
                     ruta = os.path.join(nb.carpeta_en_linea(), f"{nombre} ({pr['id'][:6]}){core.EXT}")
-            r = yield Red("Bajando el proyecto…", lambda: nb.llamar("bajar", proyecto=pr["id"], timeout=180))
+            nb.anotar(f"Abrir: bajando a {ruta}")
+            r = yield Red("Bajando el proyecto…", lambda: nb.llamar("bajar", proyecto=pr["id"], timeout=300))
+            nb.anotar(f"Abrir: bajado ({len(r.get('datos', '')) / 1e6:.2f} MB en base64), descifrando")
             try:
                 datos = yield Red("Descifrando el proyecto…", lambda: nb.descifrar(nb.de_b64(r["datos"]), c))
             except nb.ClaveIncorrecta as e:
@@ -321,6 +328,7 @@ class PaginaEnLinea(Pagina):
             nb.vincular(tmp, pr["id"], r["version"], "usuario", pr["nombre"])
             tmp.guardar()
             tmp.cerrar()
+            nb.anotar("Abrir: archivo listo, abriendo el proyecto")
             self.app.abrir_proyecto(ruta)
         correr(flujo())
 
