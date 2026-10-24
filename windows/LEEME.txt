@@ -1,4 +1,4 @@
-Ctrl-P v1.1 · Control de avance detallado de obra
+Ctrl-P v1.2 · Control de avance detallado de obra
 ==================================================
 
 CREAR EL PROGRAMA PORTABLE (una sola vez, igual que PdFOL)
@@ -57,6 +57,15 @@ PRIMER USO
    «Detallado por ubicación» también muestra los días o semanas.
    Las actividades al 100 % (o más) de lo contractual van en verde (Informes,
    Excel, lista de partidas y Registro de avance).
+   «Memorias de cálculo»: una pestaña por actividad del filtro elegido con el
+   formato de la memoria de cálculo de estimación (con fórmulas). Semanas cada
+   7 días desde el primer día del período (se incluyen el primero y el último).
+   «Solo memorias» (archivo liviano) o «Informe + memorias». Logos y
+   encabezado como el formato de la memoria.
+   Cada actividad sale según sus datos fijos: un bloque por tipo de hito (ej.
+   MURO / TABIQUERÍA / TRASDOSADO) con la cantidad de diseño por edificio y
+   nivel; sin tipos, un solo bloque; sin datos fijos, lo ejecutado por
+   ubicación y lo pendiente contra la cantidad total.
 7. Enter en las tablas (Registro, Datos fijos, Ubicaciones): como en Excel,
    el valor queda en la casilla y baja a la de abajo; en la última se queda.
 

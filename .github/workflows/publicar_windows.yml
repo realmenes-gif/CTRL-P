@@ -68,7 +68,7 @@ jobs:
           python -m PyInstaller --noconfirm --clean --windowed --onedir --name Ctrl-P --icon ctrlp.ico `
             --collect-all customtkinter --collect-all pymupdf --collect-submodules cryptography `
             --hidden-import lxml.etree --hidden-import PIL._tkinter_finder --hidden-import PIL.ImageTk `
-            --add-data "fuentes;fuentes" --add-data "ctrlp.ico;." CtrlP.py
+            --add-data "fuentes;fuentes" --add-data "recursos;recursos" --add-data "ctrlp.ico;." CtrlP.py
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Probar el .exe, comprimir y calcular SHA256

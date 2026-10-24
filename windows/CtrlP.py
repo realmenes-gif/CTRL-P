@@ -22,18 +22,26 @@ import customtkinter as ctk
 
 import ctrlp_core as core
 import ctrlp_excel as xl
+import ctrlp_memoria as mc
 import ctrlp_ui as ui
 import ctrlp_planos as pl
 import ctrlp_actualizar as act_
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.1"
-VERSION_INTERNA = "1.1"
+VERSION = "v1.2"
+VERSION_INTERNA = "1.2"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.2", [
+        "Informes › «Memorias de cálculo»: una pestaña por actividad del filtro elegido, con el formato de la "
+        "memoria de estimación (logos, datos del proyecto, bloques por tipo, cantidades de diseño por edificio y "
+        "nivel, período anterior, cada semana y lo pendiente y resumen), con fórmulas de Excel.",
+        "Semanas cada 7 días desde el primer día del período (se incluyen el primero y el último).",
+        "«Solo memorias» (archivo liviano) o «Informe + memorias».",
+    ]),
     ("v1.1", [
         "Actualizaciones desde el programa (como PdFOL): avisa cuando hay una versión nueva, la descarga, "
         "la comprueba (SHA256) y se reinicia actualizado. Tus proyectos y la carpeta CTRL-P DOC no se tocan.",
@@ -3142,6 +3150,7 @@ class PaginaInformes(Pagina):
         bot = ctk.CTkFrame(self.cab, fg_color="transparent")
         bot.grid(row=0, column=1, rowspan=2, sticky="e")
         boton(bot, "Corte de estimación", ancho=170, command=self.exportar_corte).pack(side="left", padx=(0, 8))
+        boton(bot, "Memorias de cálculo", ancho=170, command=self.memorias).pack(side="left", padx=(0, 8))
         boton(bot, "Exportar a Excel", primario=True, ancho=160, command=self.exportar).pack(side="left")
         self.cuerpo.grid_columnconfigure(0, weight=1)
         self.cuerpo.grid_rowconfigure(3, weight=1)
@@ -3786,6 +3795,65 @@ class PaginaInformes(Pagina):
             raise
         dlg.cerrar()
         if ui.preguntar(self.app, "Informe exportado", f"Se guardó:\n{ruta}", si="Abrir", no="Cerrar"):
+            abrir_en_sistema(ruta)
+
+    def memorias(self):
+        """Memorias de cálculo: una pestaña por actividad del filtro elegido, con cortes cada 7 días."""
+        if not self.p:
+            return
+        try:
+            modo, desde, hasta = self._rango()
+        except core.ErrorCtrlP as e:
+            ui.info(self.app, "Memorias de cálculo", str(e))
+            return
+        if modo == "estado":
+            desde = hasta
+        n = xl.contar_memorias(self.p, modo, desde, hasta, self._filtro(), self.v_contr.get())
+        if not n:
+            ui.info(self.app, "Memorias de cálculo", f"No hay actividades con «{self.v_filtro.get()}» en estas fechas.")
+            return
+        sem = mc.semanas(desde, hasta)
+        r = ui.dialogo_texto(
+            self.app, "Memorias de cálculo",
+            f"Una pestaña por cada actividad de «Mostrar: {self.v_filtro.get()}»: {n} actividad"
+            f"{'es' if n != 1 else ''}.\n\nPeríodo del {core.fecha_txt(desde)} al {core.fecha_txt(hasta)} "
+            f"(se incluyen los dos días), {len(sem)} semana{'s' if len(sem) != 1 else ''} cortada"
+            f"{'s' if len(sem) != 1 else ''} cada 7 días desde el primer día."
+            + ("\nSolo lo contractual: activado." if self.v_contr.get() else "")
+            + ("\n\nSon muchas pestañas: el archivo puede quedar pesado. Con «Mostrar: Con avance» salen menos."
+               if n > 150 else "")
+            + "\n\n«Solo memorias» saca un archivo liviano solo con las memorias. «Informe + memorias» agrega "
+              "las memorias al informe de siempre.",
+            ("Cancelar", "Informe + memorias", "Solo memorias"), 2)
+        if r not in (1, 2):
+            return
+        r += 1                      # 2 = informe + memorias, 3 = solo memorias
+        base = os.path.splitext(os.path.basename(self.p.ruta))[0]
+        nombre = (f"{base} - Memorias de cálculo {desde} a {hasta}" if r == 3 else
+                  f"{base} - Informe y memorias {desde} a {hasta}") + ".xlsx"
+        ruta = filedialog.asksaveasfilename(title="Memorias de cálculo", defaultextension=".xlsx", initialfile=nombre,
+                                            initialdir=ui.carpeta_docs(), filetypes=[("Excel", "*.xlsx")])
+        if not ruta:
+            return
+        dlg = DialogoProgreso(self.app, "Memorias de cálculo", "Preparando las memorias…")
+        try:
+            if r == 3:
+                xl.exportar_memorias(self.p, ruta, modo, desde, hasta, self._filtro(), self.v_contr.get(),
+                                     progreso=dlg.avanzar, guardar=dlg.guardar_en_fondo)
+            else:
+                det = {"+ Por día": "dia", "+ Por semana": "semana"}.get(self.v_det.get(), "")
+                xl.exportar_informe(self.p, ruta, modo, desde, hasta, det, self.visibles, self._filtro(),
+                                    self.v_contr.get(), progreso=dlg.avanzar, guardar=dlg.guardar_en_fondo,
+                                    memorias=True)
+        except PermissionError:
+            dlg.cerrar()
+            ui.info(self.app, "Exportar", "No se pudo guardar: el archivo está abierto en Excel. Cerralo y volvé a intentar.")
+            return
+        except Exception:
+            dlg.cerrar()
+            raise
+        dlg.cerrar()
+        if ui.preguntar(self.app, "Memorias de cálculo", f"Se guardó:\n{ruta}", si="Abrir", no="Cerrar"):
             abrir_en_sistema(ruta)
 
     def exportar_corte(self):
@@ -6090,6 +6158,17 @@ def autoprueba(app, ruta, log):
         pg.exportar_corte()
         if not os.path.getsize(destino):
             raise RuntimeError("Corte vacío")
+        # memorias de calculo: solo memorias y informe + memorias
+        import openpyxl
+        for eleccion in (2, 1):
+            destino = os.path.join(d, f"memorias_{eleccion}.xlsx")
+            filedialog.asksaveasfilename = lambda *a, **k: destino
+            ui.dialogo_texto = lambda *a, **k: eleccion
+            pg.memorias()
+            ui.dialogo_texto = lambda *a, **k: 0
+            hojas = openpyxl.load_workbook(destino, read_only=True).sheetnames
+            if not any(h.startswith("M.C ") for h in hojas):
+                raise RuntimeError(f"Sin memorias de cálculo: {hojas}")
 
     @paso
     def salir():

@@ -44,6 +44,8 @@ if not exist "ctrlp_ui.py" goto :faltan
 if not exist "ctrlp_planos.py" goto :faltan
 if not exist "ctrlp_render.py" goto :faltan
 if not exist "ctrlp_actualizar.py" goto :faltan
+if not exist "ctrlp_memoria.py" goto :faltan
+if not exist "recursos\memoria\logo_izquierda.png" goto :faltan
 if not exist "ctrlp.ico" goto :faltan
 if not exist "fuentes\Inter-Regular.ttf" goto :faltan
 
@@ -66,6 +68,7 @@ python -m PyInstaller --noconfirm --clean --windowed --onedir ^
     --hidden-import PIL._tkinter_finder ^
     --hidden-import PIL.ImageTk ^
     --add-data "%~dp0fuentes;fuentes" ^
+    --add-data "%~dp0recursos;recursos" ^
     --add-data "%~dp0ctrlp.ico;." ^
     --distpath "%~dp0_dist" --workpath "%~dp0_build" --specpath "%~dp0_build" ^
     CtrlP.py

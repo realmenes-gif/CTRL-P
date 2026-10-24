@@ -114,8 +114,36 @@ def _avisador(progreso):
     return aviso
 
 
+def exportar_memorias(p, ruta, modo, desde, hasta, filtro="completo", solo_contractual=False, progreso=None,
+                      guardar=None):
+    """Solo las memorias de calculo: una pestaña por actividad del filtro elegido."""
+    import ctrlp_memoria as mc
+    if modo == "estado":
+        desde = hasta
+    calc = Calculo(p, desde, hasta, solo_contractual)
+    ids = calc.visibles(filtro or "completo")
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    n = mc.agregar_memorias(wb, p, ids, desde, hasta, solo_contractual, progreso, 0.02, 0.7)
+    if not n:
+        wb.create_sheet("Sin actividades")["A1"] = "No hay actividades con el filtro elegido."
+    if progreso:
+        progreso(0.7, "Guardando el archivo…")
+    _guardar(wb, ruta, guardar)
+    mc.compactar_imagenes(ruta)
+    return n
+
+
+def contar_memorias(p, modo, desde, hasta, filtro="completo", solo_contractual=False):
+    if modo == "estado":
+        desde = hasta
+    calc = Calculo(p, desde, hasta, solo_contractual)
+    ids = calc.visibles(filtro or "completo")
+    return sum(1 for it in calc.items if it["tipo"] == "P" and it["id"] in ids)
+
+
 def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, filtro="completo",
-                     solo_contractual=False, progreso=None, guardar=None):
+                     solo_contractual=False, progreso=None, guardar=None, memorias=False):
     """modo: 'estado' (desde=hasta=fecha) o 'periodo'. detalle: '', 'dia', 'semana'.
     solo_contractual: en partidas repartidas por ubicacion, solo lo que cabe en la cantidad de cada ubicacion."""
     _ESTILOS.clear()
@@ -364,9 +392,15 @@ def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, fil
         _poner(ws, fila, k, round(v, 6) if isinstance(v, float) else v, fmt if v is not None else None,
                F_B, RELL_T0)
     ws.freeze_panes = ws.cell(row=f + 1, column=3)
+    if memorias:
+        import ctrlp_memoria as mc
+        mc.agregar_memorias(wb, p, vis_ids, desde, hasta, solo_contractual, progreso, 0.68, 0.85)
     if progreso:
-        progreso(0.7, "Guardando el archivo…")
+        progreso(0.85 if memorias else 0.7, "Guardando el archivo…")
     _guardar(wb, ruta, guardar)
+    if memorias:
+        import ctrlp_memoria as mc
+        mc.compactar_imagenes(ruta)
     return ruta
 
 

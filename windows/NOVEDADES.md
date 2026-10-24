@@ -1,14 +1,8 @@
-## Ctrl-P v1.1 (Windows)
+## Ctrl-P v1.2 (Windows)
 
-- Actualizaciones desde el programa (como PdFOL): avisa cuando hay una versión nueva, la descarga, la comprueba (SHA256) y se reinicia actualizado. Tus proyectos y la carpeta CTRL-P DOC no se tocan.
-- Exportar a Excel mucho más rápido y con barra de avance: el programa ya no queda «No responde».
-- Informes: columnas fijas a izquierda y derecha; solo se desplazan los días o semanas.
-- Informes: «Mostrar» Presupuesto completo / Con avance / Con historial / Al 100 %, siempre con sus etapas.
-- Informes: «Detallado por ubicación» también por día o por semana; el Excel sale con el mismo filtro.
-- Actividades al 100 % (o más) de lo contractual en verde: Informes, Excel, lista de partidas y Registro.
-- Enter como en Excel en Registro, Datos fijos y Ubicaciones: el cursor baja a la casilla de abajo.
-- Ubicaciones: las áreas sin nivel pueden tener tramos (subdivisiones), cada uno es una ubicación.
-- Informes: interruptor «Ver solo lo contractual» (también en Exportar a Excel y Corte de estimación).
-- Registro de avance más rápido: al escribir solo se actualiza la fila; totales con Refrescar (F5) o Guardar.
+- Informes › **Memorias de cálculo**: una pestaña por cada actividad del filtro elegido («Mostrar»), con el formato de la memoria de cálculo de estimación: logos, datos del proyecto, período, datos de la partida, un bloque por tipo (ej. MURO / TABIQUERÍA / TRASDOSADO) con la cantidad de diseño por edificio y nivel, el período anterior, cada semana y lo pendiente, y el resumen para estimación.
+- Las memorias llevan fórmulas de Excel (totales, subtotales, pendientes, resumen y datos de la partida); las cantidades salen de los datos fijos y del registro de avance.
+- Semanas cortadas cada 7 días desde el primer día del período, incluidos el primero y el último (ej. 16–22 y 23–29 de octubre).
+- «Solo memorias» saca un archivo liviano; «Informe + memorias» las agrega al informe de siempre. Respetan «Ver solo lo contractual».
 
 Descarga: **Ctrl-P_portable.zip** (descomprimir y abrir Ctrl-P.exe). Si ya tenés la v1.1 o posterior, el programa se actualiza solo.
