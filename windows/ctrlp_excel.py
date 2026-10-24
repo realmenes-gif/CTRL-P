@@ -159,7 +159,7 @@ def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, fil
         filtro = "completo"
     calc = Calculo(p, desde, hasta, solo_contractual)
     vis_ids = calc.visibles(filtro)
-    cortes = buckets(desde, hasta, detalle) if (detalle and modo == "periodo") else []
+    cortes = buckets(desde, hasta, detalle, p.inicio_semana) if (detalle and modo == "periodo") else []
     ex_buckets = []
     for k, (_, b0, b1) in enumerate(cortes):
         aviso(0.02, 0.05, k, len(cortes), "Calculando días y semanas…")
@@ -426,8 +426,11 @@ def _agrupar(ws, cols):
     ws.sheet_properties.outlinePr.summaryRight = False
 
 
-def exportar_corte(p, ruta, desde, hasta, solo_contractual=False, progreso=None, guardar=None):
-    """Corte de estimacion: presupuesto completo + cantidad y monto cobrables del periodo."""
+def exportar_corte(p, ruta, desde, hasta, solo_contractual=False, progreso=None, guardar=None, memorias=False,
+                   filtro="completo"):
+    """Corte de estimacion: presupuesto completo + cantidad y monto cobrables del periodo.
+    memorias: agrega la memoria de calculo de cada actividad del filtro con una sola columna «ESTE PERÍODO»
+    (la suma del periodo, sin el desglose por semana)."""
     _ESTILOS.clear()
     calc = Calculo(p, desde, hasta, solo_contractual)
     mon = p.get_meta("moneda", "US$") or "US$"
@@ -472,5 +475,13 @@ def exportar_corte(p, ruta, desde, hasta, solo_contractual=False, progreso=None,
     for k, v in enumerate(["TOTAL", None, None, None, None, round(t["total"], 2), None, round(t["m_per"], 2)], start=1):
         _poner(ws, fila, k, v, NUM if isinstance(v, float) else None, F_B, RELL_T0)
     ws.freeze_panes = ws.cell(row=f + 1, column=3)
+    if memorias:
+        import ctrlp_memoria as mc
+        mc.agregar_memorias(wb, p, calc.visibles(filtro or "completo"), desde, hasta, solo_contractual, progreso,
+                            0.1, 0.7, estimacion=True)
+    if progreso:
+        progreso(0.7, "Guardando el archivo…")
     _guardar(wb, ruta, guardar)
+    if memorias:
+        mc.compactar_imagenes(ruta)
     return ruta

@@ -683,6 +683,24 @@ class Proyecto:
                     self.set_meta(k, nuevo)
                     self.registrar(f"Dato del proyecto: {k}", "", "", ant, nuevo)
 
+    @property
+    def inicio_semana(self):
+        """Dia en que empiezan los cortes semanales (0 = lunes … 6 = domingo). Se guarda en el proyecto."""
+        try:
+            v = int(self.get_meta("inicio_semana", str(INICIO_SEMANA)) or INICIO_SEMANA)
+        except ValueError:
+            v = INICIO_SEMANA
+        return v if 0 <= v <= 6 else INICIO_SEMANA
+
+    def cambiar_inicio_semana(self, dia):
+        ant = self.inicio_semana
+        if int(dia) != ant:
+            self.set_meta("inicio_semana", int(dia))
+            self.registrar("Cortes semanales", "", "", f"de {DIAS_SEMANA[ant]} a {DIAS_SEMANA[(ant + 6) % 7]}",
+                           f"de {DIAS_SEMANA[int(dia)]} a {DIAS_SEMANA[(int(dia) + 6) % 7]}")
+            return True
+        return False
+
     # ---------------------------------------------------------------- historial
     def registrar(self, que, actividad="", ubicacion="", anterior="", nuevo="", usuario=None, fecha=None,
                   version=None, uid=None):
@@ -2389,8 +2407,23 @@ def _hojas_calc(self, iid):
 Calculo.hojas = _hojas_calc
 
 
-def buckets(desde, hasta, modo):
-    """Intervalos para el detalle por dia o por semana: lista de (etiqueta, d0, d1)."""
+DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+INICIO_SEMANA = 4          # por defecto la semana va de viernes a jueves (cortes de estimacion del proyecto)
+
+
+def texto_semana(inicio):
+    return f"{DIAS_SEMANA[inicio].lower()} a {DIAS_SEMANA[(inicio + 6) % 7].lower()}"
+
+
+def fin_de_semana(d, inicio=0):
+    """Ultimo dia de la semana que contiene d, si la semana empieza el dia «inicio» (0 = lunes … 6 = domingo)."""
+    return d + dt.timedelta(days=(inicio - 1 - d.weekday()) % 7)
+
+
+def buckets(desde, hasta, modo, inicio=0):
+    """Intervalos para el detalle por dia o por semana: lista de (etiqueta, d0, d1).
+    Por semana: cortes segun el dia en que empieza la semana del proyecto (inicio: 0 = lunes … 6 = domingo);
+    el primero y el ultimo pueden quedar incompletos (se incluyen los dos extremos del periodo)."""
     d0, d1 = iso_a_fecha(desde), iso_a_fecha(hasta)
     res = []
     if modo == "dia":
@@ -2401,7 +2434,7 @@ def buckets(desde, hasta, modo):
     elif modo == "semana":
         d = d0
         while d <= d1 and len(res) < 200:
-            fin = min(d + dt.timedelta(days=6 - d.weekday()), d1)
+            fin = min(fin_de_semana(d, inicio), d1)
             res.append((f"{d.strftime('%d/%m')}–{fin.strftime('%d/%m')}", d.isoformat(), fin.isoformat()))
             d = fin + dt.timedelta(days=1)
     return res

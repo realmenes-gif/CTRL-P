@@ -25,7 +25,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.properties import PageSetupProperties
 
-from ctrlp_core import dia_anterior, iso_a_fecha
+from ctrlp_core import dia_anterior, fin_de_semana, iso_a_fecha
 
 # ------------------------------------------------------------------ encabezado (el del formato)
 ENCABEZADO = {
@@ -94,12 +94,13 @@ def texto_rango(d0, d1, mayus=True):
     return f"{d0.day}{al}{d1.day}{de}{_mes(d0.month, mayus)}"
 
 
-def semanas(desde, hasta):
-    """Cortes de 7 dias desde el primer dia del periodo (incluidos el primero y el ultimo)."""
+def semanas(desde, hasta, inicio=0):
+    """Cortes semanales segun el dia en que empieza la semana del proyecto (0 = lunes … 6 = domingo),
+    incluidos el primer y el ultimo dia del periodo."""
     d0, d1 = iso_a_fecha(desde), iso_a_fecha(hasta)
     res = []
     while d0 <= d1 and len(res) < 60:
-        fin = min(d0 + dt.timedelta(days=6), d1)
+        fin = min(fin_de_semana(d0, inicio), d1)
         res.append((d0, fin))
         d0 = fin + dt.timedelta(days=1)
     return res
@@ -279,8 +280,10 @@ def _ancho_px(ws, col):
     return int(w * 7 + 5)
 
 
-def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, usados=None):
-    cortes = semanas(desde, hasta)
+def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, usados=None, estimacion=False):
+    """estimacion: para el corte de estimacion, una sola columna «ESTE PERÍODO» con la suma del periodo
+    (sin el desglose por semana)."""
+    cortes = [(iso_a_fecha(desde), iso_a_fecha(hasta))] if estimacion else semanas(desde, hasta, p.inicio_semana)
     d = datos_partida(p, it, desde, hasta, cortes, solo_contractual)
     usados = set() if usados is None else usados
     ws = wb.create_sheet(nombre_hoja(it, usados))
@@ -354,17 +357,15 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
           al=IZQ)
     _unir(ws, 13, c_cant, 13, c_cant, it["cantidad"], fmt=NUM, **dat)
     _unir(ws, 13, c_uni, 13, c_uni, it["unidad"], **dat)
-    obs = " | ".join(d["obs"]) if d["obs"] else "N/A"
-    if len(obs) > 1500:
-        obs = obs[:1497] + "…"
-    _unir(ws, 13, c_obs, 13, W, obs, font=_f(11 if obs == "N/A" else 9, nombre="Calibri"), fill=_r(BLANCO),
-          borde=_caja(), al=CENTRO)
+    # observaciones: el cuadro queda en blanco (se llena a mano)
+    obs = ""
+    _unir(ws, 13, c_obs, 13, W, None, font=_f(11, nombre="Calibri"), fill=_r(BLANCO), borde=_caja(), al=CENTRO)
     # alto de la fila para que la descripcion y las observaciones siempre quepan
     import math
     ancho_desc = sum(ws.column_dimensions[get_column_letter(c)].width for c in range(2, c_cant))
     ancho_obs = sum(ws.column_dimensions[get_column_letter(c)].width for c in range(c_obs, W + 1))
     l_desc = math.ceil(len(it["descripcion"] or "") * 1.1 / max(10, ancho_desc - 2))
-    l_obs = math.ceil(len(obs) * 0.85 / max(8, ancho_obs - 2)) if obs != "N/A" else 1
+    l_obs = math.ceil(len(obs) * 0.85 / max(8, ancho_obs - 2)) if obs else 1
     ws.row_dimensions[13].height = max(55.2, l_desc * 15 + 8, l_obs * 12.5 + 8)
 
     # ---- tabla
@@ -379,7 +380,7 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
     _unir(ws, f, c_ant, f, c_ant + n - 1, "PERIODO ANTERIOR", borde=Border(left=MEDIA, right=FINA, top=MEDIA,
                                                                             bottom=FINA), **th)
     for k, (d0, d1) in enumerate(cortes):
-        _unir(ws, f, c_sem[k], f, c_sem[k] + n - 1, "SEMANA\n" + texto_rango(d0, d1),
+        _unir(ws, f, c_sem[k], f, c_sem[k] + n - 1, "ESTE PERÍODO" if estimacion else "SEMANA\n" + texto_rango(d0, d1),
               borde=Border(left=MEDIA, right=FINA, top=MEDIA, bottom=FINA), **th)
     _unir(ws, f, c_pen, f, c_pen + n - 1, "PENDIENTE DE EJECUTAR",
           borde=Border(left=MEDIA, right=MEDIA, top=MEDIA, bottom=FINA), **th)
@@ -572,7 +573,8 @@ def padre_de(p, it, por_id):
     return por_id.get(it.get("padre")) if it.get("padre") else None
 
 
-def agregar_memorias(wb, p, ids, desde, hasta, solo_contractual=False, progreso=None, f0=0.0, f1=1.0):
+def agregar_memorias(wb, p, ids, desde, hasta, solo_contractual=False, progreso=None, f0=0.0, f1=1.0,
+                     estimacion=False):
     """Agrega una pestaña de memoria por cada partida (tipo «P») de ids, en el orden del presupuesto."""
     enc = ENCABEZADO
     items = p.items()
@@ -582,5 +584,5 @@ def agregar_memorias(wb, p, ids, desde, hasta, solo_contractual=False, progreso=
     for k, it in enumerate(lista):
         if progreso:
             progreso(f0 + (f1 - f0) * k / max(1, len(lista)), f"Memoria {it['codigo']} ({k + 1} de {len(lista)})…")
-        hoja_memoria(wb, p, it, padre_de(p, it, por_id), desde, hasta, enc, solo_contractual, usados)
+        hoja_memoria(wb, p, it, padre_de(p, it, por_id), desde, hasta, enc, solo_contractual, usados, estimacion)
     return len(lista)

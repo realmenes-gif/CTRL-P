@@ -1,4 +1,12 @@
-## Ctrl-P v1.4 (Windows)
+## Ctrl-P v1.5 (Windows)
+
+- Cortes semanales a elección (por defecto de viernes a jueves): en Proyecto › Datos del proyecto o tocando «Semanas: …» en Informes. Se usan en «+ Por semana» y en las memorias de cálculo.
+- Corte de estimación: «Corte + memorias» agrega las memorias de cálculo con una sola columna «ESTE PERÍODO» (la suma del período, sin semanas). Las de «Memorias de cálculo» siguen con el desglose por semana.
+- Memorias: el cuadro de observaciones queda en blanco.
+- Informes: opciones en orden (fechas, vista, detalle, qué mostrar); al tocar varias seguidas se calcula una sola vez.
+- Si el programa deja de responder, queda anotado en errores.log dónde se quedó.
+
+### Incluye lo de la v1.4
 
 - **Instalador** (Ctrl-P_instalador.exe): se instala para tu usuario sin pedir administrador, con acceso en el menú Inicio y en el escritorio, doble clic en los proyectos .ctrlp y desinstalador. Instalado, los proyectos y exportaciones van a Documentos\CTRL-P DOC. Se sigue actualizando solo desde el programa.
 - Informes: la barra horizontal solo aparece cuando hay columnas que desplazar (antes el programa se podía quedar «No responde» al tocarla).

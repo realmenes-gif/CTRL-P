@@ -29,12 +29,22 @@ import ctrlp_actualizar as act_
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.4"
-VERSION_INTERNA = "1.4"
+VERSION = "v1.5"
+VERSION_INTERNA = "1.5"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.5", [
+        "Cortes semanales a elección (por defecto de viernes a jueves): en Proyecto › Datos del proyecto o tocando "
+        "«Semanas: …» en Informes. Se usan en «+ Por semana» y en las memorias de cálculo.",
+        "Corte de estimación: «Corte + memorias» agrega las memorias con una sola columna «ESTE PERÍODO» (la suma "
+        "del período, sin semanas). Las memorias de «Memorias de cálculo» siguen por semana.",
+        "Memorias: el cuadro de observaciones queda en blanco.",
+        "Informes: opciones en orden (fechas, vista, detalle, qué mostrar); al tocar varias seguidas se calcula una "
+        "sola vez y no se calcula si ya cambiaste de pantalla.",
+        "Si el programa deja de responder, queda anotado en errores.log dónde se quedó (para poder corregirlo).",
+    ]),
     ("v1.4", [
         "Instalador (Ctrl-P_instalador.exe): se instala para tu usuario sin pedir administrador, con acceso en el "
         "menú Inicio y el escritorio, doble clic en los proyectos .ctrlp y desinstalador. Instalado, los proyectos "
@@ -530,7 +540,8 @@ class App(ctk.CTk):
             self.paginas[self.pagina].grid_forget()
         self.pagina = clave
         pg = self.paginas[clave]
-        reusar = (clave in PAGINAS_MANUALES and self.p is not None and getattr(pg, "_proy_cargado", None) is self.p)
+        reusar = (clave in PAGINAS_MANUALES and self.p is not None and getattr(pg, "_proy_cargado", None) is self.p
+                  and not getattr(pg, "_sin_calcular", False))
         if not reusar:
             pg.refrescar()
         try:
@@ -1121,6 +1132,14 @@ class PaginaProyecto(Pagina):
             if p.solo_agregar:
                 e.configure(state="disabled")
             t.fila(txt, e)
+        self.v_sem_proy = tk.StringVar(value=f"De {core.texto_semana(p.inicio_semana)}")
+        fs = ctk.CTkFrame(t, fg_color="transparent")
+        etiqueta(fs, "", 13, "bold", textvariable=self.v_sem_proy).pack(side="left", padx=(0, 12))
+        bs = boton(fs, "Cambiar…", ancho=100, command=self.cambiar_semana)
+        bs.pack(side="left")
+        if p.solo_agregar:
+            bs.configure(state="disabled")
+        t.fila("Cortes semanales", fs, "Para Informes («+ Por semana») y las memorias de cálculo.")
         fila = ctk.CTkFrame(t, fg_color="transparent")
         fila.grid(row=99, column=0, columnspan=2, sticky="e", padx=16, pady=(0, 14))
         b = boton(fila, "Guardar cambios", primario=True, ancho=150, command=self.guardar_datos)
@@ -1176,6 +1195,13 @@ class PaginaProyecto(Pagina):
             self.app.dibujar_lateral()
             self.refrescar()
             self.app.nuevo_proyecto()
+
+    def cambiar_semana(self):
+        if elegir_inicio_semana(self.app):
+            self.v_sem_proy.set(f"De {core.texto_semana(self.p.inicio_semana)}")
+            inf = self.app.paginas.get("informes")
+            if inf is not None:
+                inf._sin_calcular = True
 
     def guardar_datos(self):
         self.p.cambiar_datos({k: v.get() for k, v in self.vars.items()})
@@ -3180,8 +3206,9 @@ class PaginaInformes(Pagina):
         ui.segmentado(grupo(), ["Estado al", "Período"], self.v_modo, 170, cmd=lambda _: self._modo()).pack(side="left")
         hoy = core.hoy_iso()
         import datetime as dt
-        lunes = (core.iso_a_fecha(hoy) - dt.timedelta(days=core.iso_a_fecha(hoy).weekday())).isoformat()
-        self.v_desde = tk.StringVar(value=core.fecha_txt(lunes))
+        dh = core.iso_a_fecha(hoy)
+        inicio_sem = (dh - dt.timedelta(days=(dh.weekday() - core.INICIO_SEMANA) % 7)).isoformat()
+        self.v_desde = tk.StringVar(value=core.fecha_txt(inicio_sem))
         self.v_hasta = tk.StringVar(value=core.fecha_txt(hoy))
         fila = grupo()
         self.l_desde = etiqueta(fila, "Desde", 12, color="texto2")
@@ -3193,24 +3220,31 @@ class PaginaInformes(Pagina):
         self.e_hasta = entrada(fila, self.v_hasta, 110, justify="center")
         self.e_hasta.pack(side="left")
         g = grupo()
+        etiqueta(g, "Vista", 12, color="texto2").pack(side="left", padx=(8, 6))
+        self.v_vista = tk.StringVar(value="Por partida")
+        ui.segmentado(g, ["Por partida", "Detallado por ubicación", "Planos marcados"], self.v_vista, 420,
+                      cmd=lambda _: self.pedir_generar()).pack(side="left")
+        g = grupo()
         self.l_det = etiqueta(g, "Detalle", 12, color="texto2")
         self.l_det.pack(side="left", padx=(8, 6))
         self.v_det = tk.StringVar(value="Sumatoria")
-        self.s_det = ui.segmentado(g, ["Sumatoria", "+ Por día", "+ Por semana"], self.v_det, 260, cmd=lambda _: self.generar())
+        self.s_det = ui.segmentado(g, ["Sumatoria", "+ Por día", "+ Por semana"], self.v_det, 260,
+                                   cmd=lambda _: self.pedir_generar())
         self.s_det.pack(side="left")
-        g = grupo()
-        etiqueta(g, "Vista", 12, color="texto2").pack(side="left", padx=(0, 6))
-        self.v_vista = tk.StringVar(value="Por partida")
-        ui.segmentado(g, ["Por partida", "Detallado por ubicación", "Planos marcados"], self.v_vista, 420,
-                      cmd=lambda _: self.generar()).pack(side="left")
+        # de que dia a que dia van las semanas (se cambia aqui o en Proyecto; se guarda en el proyecto)
+        self.v_sem = tk.StringVar(value="")
+        self.l_sem = etiqueta(g, "", 11, color="acento", textvariable=self.v_sem, cursor="hand2")
+        self.l_sem.pack(side="left", padx=(8, 0))
+        self.l_sem.bind("<Button-1>", lambda _: self.cambiar_semana())
         g = grupo()
         etiqueta(g, "Mostrar", 12, color="texto2").pack(side="left", padx=(8, 6))
         self.v_filtro = tk.StringVar(value="Presupuesto completo")
-        ui.segmentado(g, [t for _, t in core.FILTROS], self.v_filtro, 470, cmd=lambda _: self.generar()).pack(side="left")
+        ui.segmentado(g, [t for _, t in core.FILTROS], self.v_filtro, 470,
+                      cmd=lambda _: self.pedir_generar()).pack(side="left")
         g = grupo()
         self.v_contr = tk.BooleanVar(value=False)
         etiqueta(g, "Ver solo lo contractual", 12, color="texto2").pack(side="left", padx=(8, 8))
-        ui.Interruptor(g, self.v_contr, comando=self.generar).pack(side="left")
+        ui.Interruptor(g, self.v_contr, comando=self.pedir_generar).pack(side="left")
         g = grupo()
         boton(g, "Desplegar", ancho=96, command=lambda: self.tv and ui.desplegar(self.tv, True)).pack(
             side="left", padx=(4, 6))
@@ -3364,6 +3398,32 @@ class PaginaInformes(Pagina):
             etiqueta(g, f"{f * 100:,.2f} %", 20, "bold").pack(anchor="w")
         self.v_graf_tit.set(titulo)
 
+    def pedir_generar(self, *_):
+        """Al tocar varias opciones seguidas se calcula una sola vez, al final (no se amontonan los calculos)."""
+        if getattr(self, "_pendiente", None):
+            try:
+                self.after_cancel(self._pendiente)
+            except Exception:
+                pass
+        self._pendiente = self.after(250, self._generar_pendiente)
+
+    def _generar_pendiente(self):
+        self._pendiente = None
+        self.generar()
+
+    def _texto_semana(self):
+        if self.p:
+            self.v_sem.set(f"Semanas: {core.texto_semana(self.p.inicio_semana)} ›")
+        else:
+            self.v_sem.set("")
+
+    def cambiar_semana(self):
+        if not self.p:
+            return
+        if elegir_inicio_semana(self.app):
+            self._texto_semana()
+            self.pedir_generar()
+
     def _modo(self):
         self.after(10, self._reflujo)
         estado = self.v_modo.get() == "Estado al"
@@ -3377,7 +3437,7 @@ class PaginaInformes(Pagina):
             self.e_desde.pack(side="left", before=self.l_hasta)
             self.l_hasta.configure(text="Hasta")
             self.s_det.configure(state="normal")
-        self.generar()
+        self.pedir_generar()
 
     def _rango(self):
         hasta = core.txt_a_iso(self.v_hasta.get())
@@ -3389,6 +3449,7 @@ class PaginaInformes(Pagina):
         return "periodo", desde, hasta
 
     def refrescar(self):
+        self._texto_semana()
         if self.p:
             self.generar()
 
@@ -3401,8 +3462,20 @@ class PaginaInformes(Pagina):
         self.generar()
 
     def generar(self):
+        if getattr(self, "_pendiente", None):              # un calculo pedido antes ya no hace falta
+            try:
+                self.after_cancel(self._pendiente)
+            except Exception:
+                pass
+            self._pendiente = None
         if not self.p:
             return
+        self._texto_semana()
+        if self.app.pagina != "informes":
+            # se cambio de pantalla antes de calcular: se calcula al volver (no trabaja escondido)
+            self._sin_calcular = True
+            return
+        self._sin_calcular = False
         try:
             modo, desde, hasta = self._rango()
         except core.ErrorCtrlP as e:
@@ -3436,7 +3509,7 @@ class PaginaInformes(Pagina):
                        ("Falta por ejecutar", falta)], mon,
                       "Porcentaje del presupuesto total · montos cobrables (con tope contractual)")
         det = {"+ Por día": "dia", "+ Por semana": "semana"}.get(self.v_det.get(), "")
-        cortes = core.buckets(desde, hasta, det) if (det and not estado) else []
+        cortes = core.buckets(desde, hasta, det, self.p.inicio_semana) if (det and not estado) else []
         if len(cortes) > 62:
             cortes = []
             self.v_det.set("Sumatoria")
@@ -3823,13 +3896,13 @@ class PaginaInformes(Pagina):
         if not n:
             ui.info(self.app, "Memorias de cálculo", f"No hay actividades con «{self.v_filtro.get()}» en estas fechas.")
             return
-        sem = mc.semanas(desde, hasta)
+        sem = mc.semanas(desde, hasta, self.p.inicio_semana)
         r = ui.dialogo_texto(
             self.app, "Memorias de cálculo",
             f"Una pestaña por cada actividad de «Mostrar: {self.v_filtro.get()}»: {n} actividad"
             f"{'es' if n != 1 else ''}.\n\nPeríodo del {core.fecha_txt(desde)} al {core.fecha_txt(hasta)} "
-            f"(se incluyen los dos días), {len(sem)} semana{'s' if len(sem) != 1 else ''} cortada"
-            f"{'s' if len(sem) != 1 else ''} cada 7 días desde el primer día."
+            f"(se incluyen los dos días), {len(sem)} semana{'s' if len(sem) != 1 else ''} "
+            f"de {core.texto_semana(self.p.inicio_semana)}."
             + ("\nSolo lo contractual: activado." if self.v_contr.get() else "")
             + ("\n\nSon muchas pestañas: el archivo puede quedar pesado. Con «Mostrar: Con avance» salen menos."
                if n > 150 else "")
@@ -3875,17 +3948,34 @@ class PaginaInformes(Pagina):
         except core.ErrorCtrlP as e:
             ui.info(self.app, "Corte de estimación", str(e))
             return
+        n = xl.contar_memorias(self.p, modo, desde, hasta, self._filtro(), self.v_contr.get())
+        r = ui.dialogo_texto(
+            self.app, "Corte de estimación",
+            "El corte lleva el presupuesto completo con la cantidad y el monto cobrables "
+            + (f"del día {core.fecha_txt(hasta)}" if desde == hasta else
+               f"del {core.fecha_txt(desde)} al {core.fecha_txt(hasta)}") + "."
+            + (f"\n\n«Corte + memorias» agrega la memoria de cálculo de cada actividad de «Mostrar: "
+               f"{self.v_filtro.get()}» ({n}), con una sola columna «ESTE PERÍODO» (la suma del período, sin "
+               "semanas)." if n else "")
+            + ("\n\nSon muchas pestañas: con «Mostrar: Con avance» salen menos." if n > 150 else ""),
+            ("Cancelar", "Corte + memorias", "Solo el corte") if n else ("Cancelar", "Solo el corte"),
+            2 if n else 1)
+        if not r:
+            return
+        con_memorias = bool(n) and r == 1
         base = os.path.splitext(os.path.basename(self.p.ruta))[0]
         ruta = filedialog.asksaveasfilename(title="Corte de estimación", defaultextension=".xlsx",
-                                            initialfile=(f"{base} - Corte de estimación del día {hasta}.xlsx" if desde == hasta else
-                                                         f"{base} - Corte de estimación {desde} a {hasta}.xlsx"),
+                                            initialfile=(f"{base} - Corte de estimación del día {hasta}"
+                                                         if desde == hasta else
+                                                         f"{base} - Corte de estimación {desde} a {hasta}")
+                                            + (" con memorias" if con_memorias else "") + ".xlsx",
                                             initialdir=ui.carpeta_docs(), filetypes=[("Excel", "*.xlsx")])
         if not ruta:
             return
         dlg = DialogoProgreso(self.app, "Corte de estimación", "Preparando el corte…")
         try:
             xl.exportar_corte(self.p, ruta, desde, hasta, self.v_contr.get(), progreso=dlg.avanzar,
-                              guardar=dlg.guardar_en_fondo)
+                              guardar=dlg.guardar_en_fondo, memorias=con_memorias, filtro=self._filtro())
         except PermissionError:
             dlg.cerrar()
             ui.info(self.app, "Exportar", "No se pudo guardar: el archivo está abierto en Excel. Cerralo y volvé a intentar.")
@@ -4831,6 +4921,63 @@ class Ventana(ctk.CTkToplevel):
         x = self.app.winfo_rootx() + (self.app.winfo_width() - self.winfo_width()) // 2
         y = self.app.winfo_rooty() + (self.app.winfo_height() - self.winfo_height()) // 3
         self.geometry(f"+{max(0, x)}+{max(0, y)}")
+
+
+def elegir_inicio_semana(app):
+    """Ventanita para elegir el dia en que empiezan los cortes semanales del proyecto. True si cambio."""
+    p = app.p
+    if p is None:
+        return False
+    if p.solo_agregar:
+        ui.info(app, "Cortes semanales", "Esta copia es «solo agregar avance»: el día de corte lo cambia quien "
+                                         "tiene el proyecto completo.")
+        return False
+    res = {"ok": False}
+    dlg = ctk.CTkToplevel(app, fg_color=C["tarjeta"])
+    dlg.title("Cortes semanales")
+    dlg.resizable(False, False)
+    dlg.transient(app)
+    etiqueta(dlg, "Cortes semanales", 16, "bold").pack(anchor="w", padx=24, pady=(20, 4))
+    etiqueta(dlg, "Día en que empieza cada semana en Informes («+ Por semana») y en las memorias de cálculo.\n"
+                  "Se guarda en el proyecto.", 12, color="texto2", justify="left").pack(anchor="w", padx=24)
+    fila = ctk.CTkFrame(dlg, fg_color="transparent")
+    fila.pack(anchor="w", padx=24, pady=(14, 0))
+    etiqueta(fila, "La semana empieza el", 13).pack(side="left", padx=(0, 8))
+    v = tk.StringVar(value=core.DIAS_SEMANA[p.inicio_semana])
+    v_txt = tk.StringVar()
+
+    def mostrar(*_):
+        k = core.DIAS_SEMANA.index(v.get())
+        v_txt.set(f"Cada semana va de {core.texto_semana(k)}.")
+    ui.menu(fila, core.DIAS_SEMANA, v, 150, cmd=mostrar).pack(side="left")
+    etiqueta(dlg, "", 13, "bold", textvariable=v_txt).pack(anchor="w", padx=24, pady=(10, 0))
+    mostrar()
+
+    def ok():
+        res["ok"] = p.cambiar_inicio_semana(core.DIAS_SEMANA.index(v.get()))
+        dlg.destroy()
+    pie = ctk.CTkFrame(dlg, fg_color="transparent")
+    pie.pack(fill="x", padx=24, pady=(18, 20))
+    boton(pie, "Guardar", primario=True, ancho=110, command=ok).pack(side="right")
+    boton(pie, "Cancelar", ancho=100, command=dlg.destroy).pack(side="right", padx=8)
+    dlg.bind("<Escape>", lambda _: dlg.destroy())
+    dlg.update_idletasks()
+    x = app.winfo_rootx() + (app.winfo_width() - dlg.winfo_width()) // 2
+    y = app.winfo_rooty() + (app.winfo_height() - dlg.winfo_height()) // 3
+    dlg.geometry(f"+{max(0, x)}+{max(0, y)}")
+    dlg.after(60, lambda: ui.tenir_barra_titulo(dlg, ui.oscuro()))
+    ui.icono_ventana(dlg)
+    try:
+        dlg.grab_set()
+    except Exception:
+        pass
+    app.wait_window(dlg)
+    if res["ok"]:
+        try:
+            app.dibujar_lateral()
+        except Exception:
+            pass
+    return res["ok"]
 
 
 class DialogoProgreso(ctk.CTkToplevel):
@@ -6089,6 +6236,41 @@ def registrar_error(titulo, texto):
         pass
 
 
+def vigilante(app, segundos=8):
+    """Si la ventana deja de responder mas de «segundos», anota en errores.log donde se quedo el programa
+    (la linea exacta), aunque despues se cierre a la fuerza. Y cuando vuelve a responder, cuanto tardo."""
+    import time
+    import traceback
+    estado = {"latido": time.monotonic(), "parado": False}
+    hilo_principal = threading.main_thread().ident
+
+    def latido():
+        estado["latido"] = time.monotonic()
+        try:
+            app.after(500, latido)
+        except Exception:
+            pass
+
+    def mirar():
+        while True:
+            time.sleep(1.0)
+            espera = time.monotonic() - estado["latido"]
+            if espera > segundos and not estado["parado"]:
+                estado["parado"] = True
+                try:
+                    pila = "".join(traceback.format_stack(sys._current_frames()[hilo_principal]))
+                except Exception as e:
+                    pila = f"(no se pudo leer: {e})"
+                registrar_error("No responde", f"La ventana lleva {espera:.0f} s sin responder. Página: "
+                                f"{getattr(app, 'pagina', '?')}. Proyecto abierto: {bool(getattr(app, 'p', None))}.\n"
+                                f"Dónde está el programa:\n{pila}")
+            elif espera < 2 and estado["parado"]:
+                estado["parado"] = False
+                registrar_error("Volvió a responder", f"Página: {getattr(app, 'pagina', '?')}.")
+    app.after(500, latido)
+    threading.Thread(target=mirar, daemon=True, name="vigilante").start()
+
+
 def autoprueba(app, ruta, log):
     """Prueba automatica (la usa GitHub antes de publicar una version): entra, abre el proyecto de prueba,
     recorre todas las paginas e Informes con sus combinaciones, exporta y se cierra. Si algo falla, lo
@@ -6192,11 +6374,18 @@ def autoprueba(app, ruta, log):
             pg.exportar()
             if not os.path.getsize(destino):
                 raise RuntimeError("Excel vacío")
-        destino = os.path.join(d, "corte.xlsx")
-        filedialog.asksaveasfilename = lambda *a, **k: destino
-        pg.exportar_corte()
-        if not os.path.getsize(destino):
-            raise RuntimeError("Corte vacío")
+        import openpyxl
+        for eleccion in (2, 1):                 # solo el corte / corte + memorias (columna ESTE PERÍODO)
+            destino = os.path.join(d, f"corte_{eleccion}.xlsx")
+            filedialog.asksaveasfilename = lambda *a, **k: destino
+            ui.dialogo_texto = lambda *a, **k: eleccion
+            pg.exportar_corte()
+            ui.dialogo_texto = lambda *a, **k: 0
+            wb_ = openpyxl.load_workbook(destino)
+            if eleccion == 1:
+                hm = [h for h in wb_.sheetnames if h.startswith("M.C ")]
+                if not hm or "ESTE PERÍODO" not in [c.value for c in wb_[hm[0]][16]]:
+                    raise RuntimeError(f"Corte sin memorias con ESTE PERÍODO: {wb_.sheetnames}")
         # memorias de calculo: solo memorias y informe + memorias
         import openpyxl
         for eleccion in (2, 1):
@@ -6269,6 +6458,7 @@ def main():
     prueba = os.environ.get("CTRLP_AUTOPRUEBA")
     try:
         app = App(archivo)
+        vigilante(app)
         if prueba:
             autoprueba(app, prueba, os.environ.get("CTRLP_AUTOPRUEBA_LOG") or os.path.join(carpeta, "autoprueba.log"))
         elif cierre_inesperado:

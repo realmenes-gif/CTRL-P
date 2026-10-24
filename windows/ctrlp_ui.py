@@ -1048,7 +1048,13 @@ def tabla_fija(master, izq, centro, der):
             esc = ctk.ScalingTracker.get_widget_scaling(marco)
             libre = w / esc - fijo
             quiero = libre - total_centro if libre - total_centro >= 130 else libre - min(total_centro, 3 * 88)
-            tvi.column("descripcion", width=int(max(130, min(520, quiero)) * esc))
+            nuevo = int(max(130, min(520, quiero)) * esc)
+            try:
+                actual = int(tvi.column("descripcion", "width"))
+            except (tk.TclError, ValueError):
+                actual = -100
+            if abs(nuevo - actual) > 3:          # sin cambios pequeños: evita que la tabla se reacomode sin fin
+                tvi.column("descripcion", width=nuevo)
         marco.bind("<Configure>", ajustar, add="+")
     return marco, arbol
 

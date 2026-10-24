@@ -1,4 +1,4 @@
-Ctrl-P v1.4 · Control de avance detallado de obra
+Ctrl-P v1.5 · Control de avance detallado de obra
 ==================================================
 
 CREAR EL PROGRAMA PORTABLE (una sola vez, igual que PdFOL)
@@ -62,7 +62,10 @@ PRIMER USO
    Excel, lista de partidas y Registro de avance).
    «Memorias de cálculo»: una pestaña por actividad del filtro elegido con el
    formato de la memoria de cálculo de estimación (con fórmulas). Semanas cada
-   7 días desde el primer día del período (se incluyen el primero y el último).
+   cortadas según el día elegido en Proyecto › Cortes semanales (por defecto
+   de viernes a jueves; se incluyen el primer y el último día del período).
+   «Corte de estimación» › «Corte + memorias»: las memorias con una sola
+   columna «ESTE PERÍODO» (la suma del período).
    «Solo memorias» (archivo liviano) o «Informe + memorias». Logos y
    encabezado como el formato de la memoria.
    Cada actividad sale según sus datos fijos: un bloque por tipo de hito (ej.
