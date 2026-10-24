@@ -12,7 +12,7 @@ C = {
     "suave_h": ("#DCE3EC", "#353D48"), "campo": ("#F4F6F9", "#1D2228"), "campo_borde": ("#D3DBE5", "#3A4350"),
     "titulo0": ("#DCE3EC", "#2E3642"), "titulo": ("#EEF2F7", "#272E37"), "subtotal": ("#F4F6F9", "#252B33"),
     "rojo": ("#B42318", "#F97066"), "punto": ("#8A96A6", "#7D8896"), "sel": ("#D7E3F4", "#34465F"),
-    "marca": ("#4C6F9F", "#7096C8"),
+    "marca": ("#4C6F9F", "#7096C8"), "verde": ("#067647", "#47CD89"),
 }
 ICONOS = [  # clave, titulo, color, grupo
     ("proyecto", "Proyecto", "#3B82F6", 0),

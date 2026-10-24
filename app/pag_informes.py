@@ -125,7 +125,8 @@ class PaginaInformes(Pagina):
     def __init__(self, app, **kw):
         super().__init__(app, **kw)
         hoy = core.hoy_iso()
-        lunes = (core.iso_a_fecha(hoy) - dt.timedelta(days=core.iso_a_fecha(hoy).weekday())).isoformat()
+        dh = core.iso_a_fecha(hoy)
+        lunes = (dh - dt.timedelta(days=(dh.weekday() - core.INICIO_SEMANA) % 7)).isoformat()   # inicio de semana
         # controles
         ctl = Tarjeta(relleno=12, espacio=8)
         ws = []
@@ -147,6 +148,13 @@ class PaginaInformes(Pagina):
                                 al_cambiar=lambda _: self.generar())
         g.add_widget(self.s_det)
         ws.append(g)
+        # de que dia a que dia van las semanas (se elige en la computadora y viaja en el proyecto)
+        g = Fila(alto=40, espacio=6)
+        g.size_hint_x = None
+        g.width = dp(230)
+        self.l_sem = Etiqueta("", 12, color="texto2")
+        g.add_widget(self.l_sem)
+        ws.append(g)
         g = Fila(alto=40, espacio=6)
         g.size_hint_x = None
         g.width = dp(50 + 480)
@@ -155,14 +163,13 @@ class PaginaInformes(Pagina):
                                   al_cambiar=lambda _: self.generar())
         g.add_widget(self.s_vista)
         ws.append(g)
-        g = Fila(alto=40, espacio=8)
+        g = Fila(alto=40, espacio=6)
         g.size_hint_x = None
-        g.width = dp(250)
-        g.add_widget(Etiqueta("Solo partidas con avance", 13, color="texto2"))
-        self.sw_solo = Interruptor(False, al_cambiar=lambda _: self.generar())
-        anc = AnchorLayout(size_hint_x=None, width=dp(56))
-        anc.add_widget(self.sw_solo)
-        g.add_widget(anc)
+        g.width = dp(70 + 560)
+        g.add_widget(Etiqueta("Mostrar", 13, color="texto2", ancho_fijo=64))
+        self.s_filtro = Segmentado([t for _, t in core.FILTROS], "Presupuesto completo", ancho=560,
+                                   al_cambiar=lambda _: self.generar())
+        g.add_widget(self.s_filtro)
         ws.append(g)
         g = Fila(alto=40, espacio=8)
         g.size_hint_x = None
@@ -357,7 +364,8 @@ class PaginaInformes(Pagina):
                        ("Falta por ejecutar", falta)],
                       "Porcentaje del presupuesto total · montos cobrables (con tope contractual)")
         det = {"+ Por día": "dia", "+ Por semana": "semana"}.get(self.s_det.valor, "")
-        cortes = core.buckets(desde, hasta, det) if (det and not estado) else []
+        self.l_sem.text = f"Semanas: {core.texto_semana(self.p.inicio_semana)}"
+        cortes = core.buckets(desde, hasta, det, self.p.inicio_semana) if (det and not estado) else []
         if len(cortes) > 62:
             cortes = []
             self.s_det.poner("Sumatoria")
@@ -369,6 +377,9 @@ class PaginaInformes(Pagina):
             self._por_partida(calc, estado, cortes)
         else:
             self._detallado(calc, estado)
+
+    def _filtro(self):
+        return {t: k for k, t in core.FILTROS}.get(self.s_filtro.valor, "completo")
 
     def _nueva_tabla(self, cols):
         self.contenedor.clear_widgets()
@@ -404,16 +415,18 @@ class PaginaInformes(Pagina):
                  ("aporte", "% aporte", 84, "right")]
         keys = self._nueva_tabla(cols)
         tp = calc.total_presu or 1
-        solo = self.sw_solo.activo
+        filtro = self._filtro()
+        vis_ids = calc.visibles(filtro)            # siempre con su partida principal y subpartidas
+        solo = filtro != "completo"
         filas = []
         nivel = {}
         hay_hijos = {}
         for it in calc.items:
             r = calc.res[it["id"]]
             n = (nivel.get(it["padre"], -1) + 1) if it["padre"] else 0
+            if it["id"] not in vis_ids:
+                continue
             if it["tipo"] == "T":
-                if solo and abs(r["m_tot"]) < 1e-9 and abs(r["m_per"]) < 1e-9:
-                    continue
                 nivel[it["id"]] = n
                 vals = {k: "" for k in keys}
                 vals.update(codigo=it["codigo"], descripcion=it["descripcion"], m_per=fmt(r["m_per"]),
@@ -423,8 +436,6 @@ class PaginaInformes(Pagina):
                               "abierto": True if (solo or not it["padre"]) else False})
                 continue
             if not it["vigente"] and abs(r["tot"]) < 1e-9:
-                continue
-            if solo and abs(r["tot"]) < 1e-9 and abs(r["per"]) < 1e-9:
                 continue
             vals = {"codigo": it["codigo"], "descripcion": it["descripcion"] + ("" if it["vigente"] else
                                                                                "  [fuera del presupuesto]"),
@@ -437,7 +448,8 @@ class PaginaInformes(Pagina):
             hay_hijos[it["padre"]] = True
             filas.append({"id": it["id"], "padre": it["padre"] or "", "nivel": nivel.get(it["padre"], -1) + 1,
                           "vals": [vals.get(k, "") for k in keys], "abierto": None,
-                          "estilo": "rojo" if r["saldo"] < -1e-9 else ("fuera" if not it["vigente"] else "")})
+                          "estilo": "verde" if core.completa(r) else ("rojo" if r["saldo"] < -1e-9 else
+                                                                      ("fuera" if not it["vigente"] else ""))})
         tit_con_hijos = set()
         for f in filas:
             if f.get("padre"):
@@ -472,16 +484,16 @@ class PaginaInformes(Pagina):
             cols.append(("obs", "Observaciones", 260, "left"))
         keys = self._nueva_tabla(cols)
         obs = self.p.observaciones(calc.desde, calc.hasta) if "obs" in vis else {}
-        solo = self.sw_solo.activo
+        vis_ids = calc.visibles(self._filtro())
         filas = []
         n = 0
         for it in calc.items:
             if it["tipo"] != "P":
                 continue
             r = calc.res[it["id"]]
-            if not r["cont"] and abs(r["tot"]) < 1e-9:
+            if it["id"] not in vis_ids:
                 continue
-            if solo and abs(r["tot"]) < 1e-9 and abs(r["per"]) < 1e-9:
+            if not r["cont"] and abs(r["tot"]) < 1e-9:
                 continue
             n += 1
             vals = {"codigo": it["codigo"], "descripcion": it["descripcion"], "unidad": it["unidad"],
@@ -522,7 +534,7 @@ class PaginaInformes(Pagina):
                                   "vals": [v4.get(k, "") for k in keys], "abierto": None,
                                   "estilo": "rojo" if g["saldo"] is not None and g["saldo"] < -1e-9 else "subtotal"})
             filas.append({"id": pid, "padre": "", "nivel": 0, "vals": [vals.get(k, "") for k in keys],
-                          "estilo": "titulo", "abierto": True if hijos else None})
+                          "estilo": "titulo_verde" if core.completa(r) else "titulo", "abierto": True if hijos else None})
             filas += hijos
         if not n:
             filas.append({"id": None, "nivel": 0, "abierto": None,

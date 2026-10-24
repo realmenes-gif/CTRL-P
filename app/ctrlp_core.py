@@ -412,6 +412,17 @@ CREATE TABLE IF NOT EXISTS historial(
 ACUM = "ACUM"   # ref de las marcas hechas con «Marcar por acumulado»
 
 
+NIVEL_UNICO = "ÚNICO"          # nivel interno de un area sin nivel
+NOMBRE_GENERAL = "(GENERAL)"   # como se muestra ese nivel cuando el area tiene tramos
+
+
+def nombre_nivel(e, n):
+    """Nombre visible de un nivel: en un area con tramos, la ubicacion general se llama «(GENERAL)»."""
+    if e["es_area"] and n["nombre"] == NIVEL_UNICO:
+        return NOMBRE_GENERAL
+    return n["nombre"]
+
+
 class Proyecto:
     """Proyecto abierto. Trabaja sobre una copia de la base en una carpeta temporal
     y guarda el .ctrlp (ZIP con la base) cada vez que se llama a guardar()."""
@@ -672,6 +683,24 @@ class Proyecto:
                     self.set_meta(k, nuevo)
                     self.registrar(f"Dato del proyecto: {k}", "", "", ant, nuevo)
 
+    @property
+    def inicio_semana(self):
+        """Dia en que empiezan los cortes semanales (0 = lunes … 6 = domingo). Se guarda en el proyecto."""
+        try:
+            v = int(self.get_meta("inicio_semana", str(INICIO_SEMANA)) or INICIO_SEMANA)
+        except ValueError:
+            v = INICIO_SEMANA
+        return v if 0 <= v <= 6 else INICIO_SEMANA
+
+    def cambiar_inicio_semana(self, dia):
+        ant = self.inicio_semana
+        if int(dia) != ant:
+            self.set_meta("inicio_semana", int(dia))
+            self.registrar("Cortes semanales", "", "", f"de {DIAS_SEMANA[ant]} a {DIAS_SEMANA[(ant + 6) % 7]}",
+                           f"de {DIAS_SEMANA[int(dia)]} a {DIAS_SEMANA[(int(dia) + 6) % 7]}")
+            return True
+        return False
+
     # ---------------------------------------------------------------- historial
     def registrar(self, que, actividad="", ubicacion="", anterior="", nuevo="", usuario=None, fecha=None,
                   version=None, uid=None):
@@ -766,15 +795,26 @@ class Proyecto:
         return [dict(r) for r in self.con.execute("SELECT * FROM niveles WHERE edificio=? ORDER BY orden",
                                                     (edificio_id,))]
 
+    def area_simple(self, e, niveles=None):
+        """Area sin nivel que es una sola ubicacion (sin subdivisiones)."""
+        if not e["es_area"]:
+            return False
+        niveles = self.niveles_de(e["id"]) if niveles is None else niveles
+        return not niveles or (len(niveles) == 1 and niveles[0]["nombre"] == NIVEL_UNICO)
+
     def ubicaciones(self):
-        """Lista de ubicaciones en orden: dict(nivel, edificio, ed_nombre, nv_nombre, es_area, etiqueta)."""
+        """Lista de ubicaciones en orden: dict(nivel, edificio, ed_nombre, nv_nombre, es_area, etiqueta).
+        Un area exterior con subdivisiones (tramos) se maneja como un edificio: cada tramo es una ubicacion."""
         res = []
         for e in self.edificios():
-            for n in self.niveles_de(e["id"]):
-                et = e["nombre"] if e["es_area"] else f"{e['nombre']} {n['nombre']}"
+            nvs = self.niveles_de(e["id"])
+            simple = self.area_simple(e, nvs)
+            for n in nvs:
+                nn = nombre_nivel(e, n)
+                et = e["nombre"] if simple else f"{e['nombre']} {nn}"
                 res.append({"nivel": n["id"], "edificio": e["id"], "ed_nombre": e["nombre"],
-                            "nv_nombre": "" if e["es_area"] else n["nombre"], "es_area": bool(e["es_area"]),
-                            "etiqueta": et})
+                            "nv_nombre": "" if simple else nn, "es_area": simple,
+                            "exterior": bool(e["es_area"]), "etiqueta": et})
         return res
 
     def etiqueta_ubicacion(self, nivel_id):
@@ -783,7 +823,7 @@ class Proyecto:
                 return u["etiqueta"]
         return "(ubicación eliminada)"
 
-    def crear_edificio(self, nombre, niveles, es_area=False):
+    def crear_edificio(self, nombre, niveles, es_area=False, tramos=None):
         nombre = mayus(nombre)
         if not nombre:
             raise ErrorCtrlP("Escribí el nombre.")
@@ -793,7 +833,9 @@ class Proyecto:
         orden = len(self.edificios())
         self.con.execute("INSERT INTO edificios VALUES(?,?,?,?)", (eid, nombre, 1 if es_area else 0, orden))
         if es_area:
-            niveles = ["ÚNICO"]
+            niveles = [t for t in (tramos or []) if mayus(t)] or [NIVEL_UNICO]
+            if any(mayus(t) in (NIVEL_UNICO, NOMBRE_GENERAL) for t in (tramos or [])):
+                raise ErrorCtrlP(f"«{NOMBRE_GENERAL}» no se puede usar como nombre de tramo.")
         nombres = [mayus(n) for n in niveles if mayus(n)]
         if not nombres:
             raise ErrorCtrlP("Agregá al menos un nivel.")
@@ -801,8 +843,35 @@ class Proyecto:
             raise ErrorCtrlP("Hay niveles con el mismo nombre.")
         for k, n in enumerate(nombres):
             self.con.execute("INSERT INTO niveles VALUES(?,?,?,?)", (nuevo_id(), eid, n, k))
-        self.registrar("Ubicación creada", "", nombre, "", ", ".join(nombres) if not es_area else "Área sin nivel")
+        self.registrar("Ubicación creada", "", nombre, "",
+                       ", ".join(nombres) if not es_area else
+                       ("Área sin nivel" if nombres == [NIVEL_UNICO] else "Área con tramos: " + ", ".join(nombres)))
         return eid
+
+    def agregar_subdivision(self, eid, nombre):
+        """Agrega un tramo (subdivision) a un area exterior. Si el area todavia es una sola ubicacion sin uso,
+        esa ubicacion pasa a ser el primer tramo; si ya tenia avance o contractual, queda como «(GENERAL)»."""
+        e = self.con.execute("SELECT * FROM edificios WHERE id=?", (eid,)).fetchone()
+        if e is None or not e["es_area"]:
+            raise ErrorCtrlP("Los tramos se agregan a las áreas sin nivel.")
+        nombre = mayus(nombre)
+        if not nombre:
+            raise ErrorCtrlP("Escribí el nombre del tramo.")
+        if nombre in (NIVEL_UNICO, NOMBRE_GENERAL):
+            raise ErrorCtrlP(f"«{nombre}» no se puede usar como nombre de tramo.")
+        nvs = self.niveles_de(eid)
+        if any(n["nombre"] == nombre for n in nvs):
+            raise ErrorCtrlP(f"Ya existe el tramo «{nombre}» en {e['nombre']}.")
+        unico = [n for n in nvs if n["nombre"] == NIVEL_UNICO]
+        if len(nvs) == 1 and unico and not self._nivel_en_uso(unico[0]["id"]):
+            self.con.execute("UPDATE niveles SET nombre=? WHERE id=?", (nombre, unico[0]["id"]))
+            nid = unico[0]["id"]
+        else:
+            nid = nuevo_id()
+            self.con.execute("INSERT INTO niveles VALUES(?,?,?,?)", (nid, eid, nombre, len(nvs)))
+        self.registrar("Tramo agregado", "", f"{e['nombre']} {nombre}", "", nombre)
+        self.sucio = True
+        return nid
 
     def renombrar_edificio(self, eid, nombre):
         nombre = mayus(nombre)
@@ -819,6 +888,17 @@ class Proyecto:
         e = self.con.execute("SELECT * FROM edificios WHERE id=?", (eid,)).fetchone()
         actuales = {n["id"]: n for n in self.niveles_de(eid)}
         finales = [(i, mayus(n)) for i, n in nombres_por_id if mayus(n)]
+        if e["es_area"]:
+            # area exterior: se reciben solo los tramos; la ubicacion general («ÚNICO») se conserva
+            # si tiene avance o contractual, o si no queda ningun tramo
+            gen = [n for n in actuales.values() if n["nombre"] == NIVEL_UNICO]
+            otros = [(i, n) for i, n in finales if not (gen and i == gen[0]["id"])]
+            if any(n in (NIVEL_UNICO, NOMBRE_GENERAL) for _, n in otros):
+                raise ErrorCtrlP(f"«{NOMBRE_GENERAL}» no se puede usar como nombre de tramo.")
+            if gen and (self._nivel_en_uso(gen[0]["id"]) or not otros):
+                finales = [(gen[0]["id"], NIVEL_UNICO)] + otros
+            else:
+                finales = otros or [(None, NIVEL_UNICO)]
         if len({n for _, n in finales}) != len(finales):
             raise ErrorCtrlP("Hay niveles con el mismo nombre.")
         quedan = {i for i, _ in finales if i}
@@ -2085,6 +2165,29 @@ def pct(a, b):
     return (a / b) if b and abs(b) > EPS else None
 
 
+# --- filtros de Informes
+FILTROS = [("completo", "Presupuesto completo"), ("avance", "Con avance"), ("historial", "Con historial"),
+           ("100", "Al 100 %")]
+
+
+def completa(r):
+    """Actividad que llego al 100 % (o mas) de su cantidad contractual (se muestra en verde)."""
+    cant = r.get("cantidad") or 0.0
+    return cant > EPS and r.get("tot", 0.0) >= cant * (1 - 5e-5)
+
+
+def pasa_filtro(r, filtro):
+    if filtro is True:
+        filtro = "historial"
+    if filtro == "avance":
+        return abs(r.get("per", 0.0)) > EPS
+    if filtro == "historial":
+        return abs(r.get("per", 0.0)) > EPS or abs(r.get("tot", 0.0)) > EPS
+    if filtro == "100":
+        return completa(r)
+    return True
+
+
 class Calculo:
     """Calculo completo para un corte: ant (antes de 'desde'), per (desde..hasta), tot (hasta)."""
 
@@ -2174,6 +2277,29 @@ class Calculo:
             if it["tipo"] == "T" and it["id"] not in self.res:
                 suma(it["id"])
 
+    def visibles(self, filtro="completo"):
+        """Ids a mostrar con el filtro: las partidas que pasan y todos sus titulos (etapas y subetapas)."""
+        if filtro is True:
+            filtro = "historial"
+        elif not filtro:
+            filtro = "completo"
+        res = set()
+        for it in self.items:
+            if it["tipo"] != "P":
+                continue
+            r = self.res[it["id"]]
+            if not it["vigente"] and abs(r["tot"]) < EPS and abs(r["per"]) < EPS:
+                continue
+            if pasa_filtro(r, filtro):
+                res.add(it["id"])
+                pid = it["padre"]
+                while pid and pid not in res:
+                    res.add(pid)
+                    pid = (self.por_id.get(pid) or {}).get("padre")
+        if filtro == "completo":
+            res |= {it["id"] for it in self.items if it["tipo"] == "T"}
+        return res
+
     def totales(self):
         t = {k: 0.0 for k in ("m_ant", "m_tot", "m_per", "m_saldo", "m_exc")}
         for it in self.items:
@@ -2194,7 +2320,9 @@ class Calculo:
         grupos = []
         for e in self.p.edificios():
             filas = []
-            for n in self.p.niveles_de(e["id"]):
+            nvs_e = self.p.niveles_de(e["id"])
+            simple = self.p.area_simple(e, nvs_e)
+            for n in nvs_e:
                 nv = n["id"]
                 if fija and nv != fija:
                     continue
@@ -2203,7 +2331,7 @@ class Calculo:
                     continue            # solo lo contractual: la ubicacion sin cantidad no se muestra
                 a = r["nv_ant"].get(nv, 0.0)
                 t = r["nv_tot"].get(nv, 0.0)
-                filas.append({"nivel": nv, "nombre": e["nombre"] if e["es_area"] else n["nombre"],
+                filas.append({"nivel": nv, "nombre": e["nombre"] if simple else nombre_nivel(e, n),
                               "contractual": c, "ant": a, "per": t - a, "tot": t,
                               "p_nivel": pct(t, c) if c is not None else None,
                               "saldo": (c - t) if c is not None else None,
@@ -2213,7 +2341,7 @@ class Calculo:
             asign = [f["contractual"] for f in filas if f["contractual"] is not None]
             sc = sum(asign) if asign else None
             st = sum(f["tot"] for f in filas)
-            grupos.append({"edificio": e["id"], "nombre": e["nombre"], "es_area": bool(e["es_area"]), "filas": filas,
+            grupos.append({"edificio": e["id"], "nombre": e["nombre"], "es_area": simple, "filas": filas,
                            "contractual": sc, "ant": sum(f["ant"] for f in filas),
                            "per": sum(f["per"] for f in filas), "tot": st,
                            "p_edificio": pct(st, sc) if sc else None,
@@ -2279,8 +2407,23 @@ def _hojas_calc(self, iid):
 Calculo.hojas = _hojas_calc
 
 
-def buckets(desde, hasta, modo):
-    """Intervalos para el detalle por dia o por semana: lista de (etiqueta, d0, d1)."""
+DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+INICIO_SEMANA = 4          # por defecto la semana va de viernes a jueves (cortes de estimacion del proyecto)
+
+
+def texto_semana(inicio):
+    return f"{DIAS_SEMANA[inicio].lower()} a {DIAS_SEMANA[(inicio + 6) % 7].lower()}"
+
+
+def fin_de_semana(d, inicio=0):
+    """Ultimo dia de la semana que contiene d, si la semana empieza el dia «inicio» (0 = lunes … 6 = domingo)."""
+    return d + dt.timedelta(days=(inicio - 1 - d.weekday()) % 7)
+
+
+def buckets(desde, hasta, modo, inicio=0):
+    """Intervalos para el detalle por dia o por semana: lista de (etiqueta, d0, d1).
+    Por semana: cortes segun el dia en que empieza la semana del proyecto (inicio: 0 = lunes … 6 = domingo);
+    el primero y el ultimo pueden quedar incompletos (se incluyen los dos extremos del periodo)."""
     d0, d1 = iso_a_fecha(desde), iso_a_fecha(hasta)
     res = []
     if modo == "dia":
@@ -2291,7 +2434,7 @@ def buckets(desde, hasta, modo):
     elif modo == "semana":
         d = d0
         while d <= d1 and len(res) < 200:
-            fin = min(d + dt.timedelta(days=6 - d.weekday()), d1)
+            fin = min(fin_de_semana(d, inicio), d1)
             res.append((f"{d.strftime('%d/%m')}–{fin.strftime('%d/%m')}", d.isoformat(), fin.isoformat()))
             d = fin + dt.timedelta(days=1)
     return res
@@ -2751,7 +2894,8 @@ def analizar_importacion(proyecto, ruta):
                 res["ubicaciones"].append(("nivel", dict(n)))
         nombres_otros = {}
         for n in o.execute("SELECT n.id, e.nombre en, n.nombre nn, e.es_area FROM niveles n JOIN edificios e ON e.id=n.edificio"):
-            nombres_otros[n["id"]] = n["en"] if n["es_area"] else f"{n['en']} {n['nn']}"
+            nombres_otros[n["id"]] = (n["en"] if (n["es_area"] and n["nn"] == NIVEL_UNICO)
+                                      else f"{n['en']} {n['nn']}")
         # avances
         def kav(r):
             return (r["item"], r["nivel"], r["fecha"], r.get("hito") or "", r.get("tramo") or "", r.get("marca") or "",

@@ -320,6 +320,8 @@ class PaginaUbicaciones(Pagina):
         self.tipo = "Nuevo edificio"
         self.n = 3
         self.niveles = []      # [id|None, texto]
+        self.tramos_area = []  # [id|None, texto]  subdivisiones de un area (SECTOR I → TRAMO 1, TRAMO 2…)
+        self._tiene_general = False
         self._regenerar()
 
     def _form(self):
@@ -337,8 +339,24 @@ class PaginaUbicaciones(Pagina):
         f.add_widget(self.e_nombre)
         f.add_widget(Etiqueta("Se guarda siempre en mayúsculas.", 12, color="texto2"))
         if es_area:
-            f.add_widget(Etiqueta("Un área sin nivel es una sola ubicación (por ejemplo OBRAS EXTERIORES).", 13,
-                                  color="texto2"))
+            f.add_widget(Etiqueta("Un área sin nivel es una sola ubicación (por ejemplo OBRAS EXTERIORES). Si "
+                                  "necesitás subdivisiones (SECTOR I → tramo 1, tramo 2…), agregá tramos: cada tramo "
+                                  "es una ubicación y el área muestra el total.", 13, color="texto2"))
+            r = Fila()
+            r.add_widget(Etiqueta("Tramos (opcional)", 14, True))
+            r.add_widget(Boton("+ tramo", ancho=120, al_tocar=self._mas_tramo))
+            f.add_widget(r)
+            for k, (nid, txt) in enumerate(self.tramos_area):
+                r = Fila()
+                e = Campo(txt, mayus=True)
+                e.bind(text=lambda w, t, k=k: self.tramos_area[k].__setitem__(1, t))
+                r.add_widget(e)
+                r.add_widget(Boton("×", ancho=44, al_tocar=lambda k=k: self._quitar_tramo(k)))
+                f.add_widget(r)
+            if self.editando and self._tiene_general:
+                f.add_widget(Etiqueta(f"El avance que ya estaba en {self.editando['nombre']} sin tramo queda en "
+                                      f"«{self.editando['nombre']} {core.NOMBRE_GENERAL}» para que lo repartas.", 12,
+                                      color="texto2"))
         else:
             if not self.editando:
                 r = Fila()
@@ -366,6 +384,31 @@ class PaginaUbicaciones(Pagina):
             f.add_widget(r)
         else:
             f.add_widget(Boton("Crear", primario=True, al_tocar=self.crear))
+
+    def _mas_tramo(self):
+        self.tramos_area.append([None, f"TRAMO {len(self.tramos_area) + 1}"])
+        self._form()
+
+    def _quitar_tramo(self, k):
+        self.tramos_area.pop(k)
+        self._form()
+
+    def nuevo_tramo(self, e):
+        def ok(v):
+            try:
+                self.p.agregar_subdivision(e["id"], v["nombre"])
+            except core.ErrorCtrlP as ex:
+                ui.info("Nuevo tramo", str(ex))
+                return
+            self.app.guardar()
+            self.refrescar()
+        ui.formulario("Nuevo tramo", f"Subdivisión de {e['nombre']}. Cada tramo es una ubicación (contractual, "
+                      "registro, planos e informes) y el área muestra el total.",
+                      [("nombre", "Nombre del tramo", False, f"TRAMO {self._n_tramos(e) + 1}", True)],
+                      ["Cancelar", "Agregar tramo"], ok)
+
+    def _n_tramos(self, e):
+        return sum(1 for n in self.p.niveles_de(e["id"]) if n["nombre"] != core.NIVEL_UNICO)
 
     def _cambiar_n(self, v):
         self.n = v
@@ -412,34 +455,45 @@ class PaginaUbicaciones(Pagina):
             ui.info("Solo agregar avance", "En este archivo no se pueden modificar las ubicaciones.")
             return
         try:
-            self.p.crear_edificio(self.e_nombre.text, [t for _, t in self.niveles],
-                                  es_area=self.tipo != "Nuevo edificio")
+            es_area = self.tipo != "Nuevo edificio"
+            self.p.crear_edificio(self.e_nombre.text, [t for _, t in self.niveles], es_area=es_area,
+                                  tramos=[t for _, t in self.tramos_area] if es_area else None)
         except core.ErrorCtrlP as e:
             ui.info("Ubicaciones", str(e))
             return
         self.app.guardar()
         self._nombre = ""
         self.niveles = []
+        self.tramos_area = []
         self._regenerar()
         self.refrescar()
 
     def editar(self, e):
         self.editando = e
         self._nombre = e["nombre"]
-        self.niveles = [[n["id"], n["nombre"]] for n in self.p.niveles_de(e["id"])]
+        nvs = self.p.niveles_de(e["id"])
+        self._tiene_general = False
+        if e["es_area"]:
+            # en un area solo se editan los tramos; la ubicacion general queda aparte
+            self._tiene_general = any(n["nombre"] == core.NIVEL_UNICO for n in nvs) and len(nvs) > 1
+            self.tramos_area = [[n["id"], n["nombre"]] for n in nvs if n["nombre"] != core.NIVEL_UNICO]
+            self.niveles = []
+        else:
+            self.niveles = [[n["id"], n["nombre"]] for n in nvs]
         self._form()
 
     def cancelar(self):
         self.editando = None
         self._nombre = ""
         self.niveles = []
+        self.tramos_area = []
         self._regenerar()
 
     def guardar_edicion(self):
         try:
             self.p.renombrar_edificio(self.editando["id"], self.e_nombre.text)
-            if not self.editando["es_area"]:
-                self.p.guardar_niveles(self.editando["id"], [(i, t) for i, t in self.niveles])
+            lista = self.tramos_area if self.editando["es_area"] else self.niveles
+            self.p.guardar_niveles(self.editando["id"], [(i, t) for i, t in lista])
         except core.ErrorCtrlP as e:
             ui.info("Ubicaciones", str(e))
             return
@@ -486,8 +540,20 @@ class PaginaUbicaciones(Pagina):
                 cab.add_widget(Boton("Eliminar", ancho=100, alto=38, al_tocar=lambda e=e: self.eliminar(e)))
             t.add_widget(cab)
             niv = self.p.niveles_de(e["id"])
-            if e["es_area"]:
-                t.add_widget(Etiqueta("Una sola ubicación", 13, color="texto2"))
+            if e["es_area"] and self.p.area_simple(e, niv):
+                r = Fila(alto=40)
+                r.add_widget(Etiqueta("Una sola ubicación", 13, color="texto2"))
+                if not self.p.solo_agregar:
+                    r.add_widget(Boton("+ tramo", ancho=110, alto=38, al_tocar=lambda e=e: self.nuevo_tramo(e)))
+                t.add_widget(r)
+            elif e["es_area"]:
+                ntr = sum(1 for n in niv if n["nombre"] != core.NIVEL_UNICO)
+                r = Fila(alto=40)
+                r.add_widget(Etiqueta(f"{ntr} tramo" + ("" if ntr == 1 else "s"), 13, color="texto2"))
+                if not self.p.solo_agregar:
+                    r.add_widget(Boton("+ tramo", ancho=110, alto=38, al_tocar=lambda e=e: self.nuevo_tramo(e)))
+                t.add_widget(r)
+                t.add_widget(Flujo([Chip(core.nombre_nivel(e, n)) for n in niv]))
             else:
                 t.add_widget(Etiqueta(f"{len(niv)} niveles", 13, color="texto2"))
                 t.add_widget(Flujo([Chip(n["nombre"]) for n in niv]))

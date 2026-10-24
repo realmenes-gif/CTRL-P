@@ -26,6 +26,8 @@ ESTILOS = {
     "fuera": ("tarjeta", False, "texto2"),
     "sel": ("sel", False, "texto"),
     "rojo": ("tarjeta", False, "rojo"),
+    "verde": ("tarjeta", False, "verde"),          # al 100 % (o mas) de lo contractual
+    "titulo_verde": ("titulo", True, "verde"),
 }
 
 
@@ -230,17 +232,26 @@ class Tabla(BoxLayout):
         self._mostrar()
 
 
-def filas_presupuesto(p, columnas, q="", con_fuera=False, marcas=None):
+def partidas_completas(p):
+    """Partidas al 100 % (o mas) de su cantidad: van en verde en la lista de partidas."""
+    ej = {i: sum(v.values()) for i, v in p.ejecutado().items()}
+    return {it["id"] for it in p.items() if it["tipo"] == "P" and (it["cantidad"] or 0) > 1e-9
+            and ej.get(it["id"], 0.0) >= it["cantidad"] * (1 - 5e-5)}
+
+
+def filas_presupuesto(p, columnas, q="", con_fuera=False, marcas=None, completas=None):
     """Filas del arbol del presupuesto. columnas: funcion(it) -> lista de valores."""
     import ctrlp_core as core
     filas = []
     qn = core.clave_texto(q)
     items = p.items()
+    completas = completas or set()
     if qn:
         for it in items:
             if it["tipo"] == "P" and it["vigente"] and (qn in core.clave_texto(it["descripcion"])
                                                         or qn in core.clave_texto(it["codigo"])):
-                filas.append({"id": it["id"], "vals": columnas(it), "nivel": 0, "abierto": None, "padre": ""})
+                filas.append({"id": it["id"], "vals": columnas(it), "nivel": 0, "abierto": None, "padre": "",
+                              "estilo": "verde" if it["id"] in completas else ""})
         return filas
     hijos = {}
     for it in items:
@@ -257,7 +268,8 @@ def filas_presupuesto(p, columnas, q="", con_fuera=False, marcas=None):
         es_t = it["tipo"] == "T"
         filas.append({"id": it["id"], "vals": columnas(it), "nivel": n, "padre": it["padre"] or "",
                       "abierto": (False if hijos.get(it["id"]) else None) if es_t else None,
-                      "estilo": ("titulo0" if not it["padre"] else "titulo") if es_t else ""})
+                      "estilo": ("titulo0" if not it["padre"] else "titulo") if es_t else
+                      ("verde" if it["id"] in completas else "")})
     if con_fuera and fuera:
         filas.append({"id": "__fuera", "vals": columnas(None) if False else ["", "FUERA DEL PRESUPUESTO VIGENTE (con avance)"],
                       "nivel": 0, "abierto": True, "estilo": "titulo0", "padre": ""})
@@ -306,7 +318,7 @@ class ArbolPartidas(BoxLayout):
             if ex:
                 v.append(self.marcas.get(it["id"], "") if it["tipo"] == "P" else "")
             return v
-        self.tabla.cargar(filas_presupuesto(p, cols, self.e_q.text))
+        self.tabla.cargar(filas_presupuesto(p, cols, self.e_q.text, completas=partidas_completas(p)))
         if self.tabla.sel_id:
             self.tabla.seleccionar(self.tabla.sel_id)
 
