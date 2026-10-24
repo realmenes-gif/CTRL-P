@@ -721,11 +721,11 @@ class DialogoUsuarios(VentanaGrande):
 #  Columnas de informes
 # =========================================================================
 def dialogo_columnas(visibles, al_aceptar):
-    import ctrlp_excel as xl
+    from pag_informes import COLUMNAS_OPCIONALES
     d = ui.Dialogo("Columnas visibles", ancho=480)
-    d.cuerpo.add_widget(Etiqueta("Las que ocultes tampoco se exportan al Excel.", 13, color="texto2"))
+    d.cuerpo.add_widget(Etiqueta("Columnas que se ven en Informes.", 13, color="texto2"))
     sw = {}
-    for k, n in xl.COLUMNAS_OPCIONALES:
+    for k, n in COLUMNAS_OPCIONALES:
         f = Fila(alto=44)
         f.add_widget(Etiqueta(n, 14))
         s = Interruptor(k in visibles)

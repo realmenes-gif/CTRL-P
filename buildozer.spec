@@ -5,7 +5,7 @@ package.domain = com.consorciohospitaltocoa
 source.dir = app
 source.include_exts = py,png,jpg,ttf,txt,json
 source.exclude_dirs = __pycache__
-version = 1.0.0
+version = 1.1.0
 requirements = python3,kivy==2.3.1,pillow,openpyxl,et_xmlfile,sqlite3,openssl,pyjnius,android
 orientation = landscape, landscape-reverse
 fullscreen = 0
@@ -16,7 +16,7 @@ android.permissions = MANAGE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, WRITE_EXTE
 android.api = 34
 android.minapi = 30
 android.ndk = 28c
-android.archs = arm64-v8a, armeabi-v7a
+android.archs = arm64-v8a
 android.accept_sdk_license = True
 android.allow_backup = True
 android.release_artifact = apk

@@ -2,7 +2,7 @@
 Ctrl-P v1 para Android (tablet)
 ===============================
 Misma logica y mismo archivo .ctrlp que la version de escritorio: los modulos ctrlp_core.py
-y ctrlp_excel.py son los mismos. Esta parte es solo la interfaz tactil.
+es el mismo. Esta parte es solo la interfaz tactil (la tablet registra; los Excel se sacan en la PC).
 """
 
 import os
@@ -29,7 +29,7 @@ import dibujos
 import ui_k as ui
 from ui_k import (Boton, Campo, Columna, Desplazable, Espacio, Etiqueta, Fila, Tarjeta, fmt, rgba)
 
-VERSION = "v1"
+VERSION = "v1.1"
 NOMBRE_MASTER = "Registro_Semanal"
 NOMBRE_ACTUALIZACION = "actualizacion_semanal"
 PAGINAS_MANUALES = ("proyecto", "presupuesto", "ubicaciones", "informes")
@@ -145,7 +145,7 @@ class Lateral(BoxLayout):
             t.add_widget(Label(text="Ctrl-P", font_size=sp(24), bold=True, color=rgba("texto"), font_name=ui.FAM,
                                size_hint_x=None, width=dp(84), halign="left", text_size=(dp(84), None)))
             t.add_widget(Label(text=VERSION, font_size=sp(13), bold=True, color=rgba("acento"), font_name=ui.FAM,
-                               size_hint_x=None, width=dp(26)))
+                               size_hint_x=None, width=dp(40)))
             t.add_widget(Widget())
             self.add_widget(t)
             self.add_widget(Etiqueta("Control de avance detallado de obra", 11, color="texto2"))
@@ -252,7 +252,7 @@ class Login(BoxLayout):
         t.add_widget(Label(text="Ctrl-P", font_size=sp(44), bold=True, color=rgba("texto"), font_name=ui.FAM,
                            size_hint_x=None, width=dp(150)))
         t.add_widget(Label(text=VERSION, font_size=sp(18), bold=True, color=rgba("acento"), font_name=ui.FAM,
-                           size_hint_x=None, width=dp(30)))
+                           size_hint_x=None, width=dp(48)))
         t.add_widget(Widget())
         izq.add_widget(t)
         anc = AnchorLayout(size_hint_y=None, height=dp(200))

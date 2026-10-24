@@ -2,8 +2,8 @@
 Ctrl-P Android - Informes de avance
 ===================================
 Estado al (un dia) o periodo, detalle por dia o semana, vista por partida, detallada por ubicacion o
-planos marcados; grafica (5 tipos, solo porcentajes) arriba de los indicadores; exportar a Excel y
-corte de estimacion. Los calculos son los mismos de la computadora (ctrlp_core / ctrlp_excel).
+planos marcados; grafica (5 tipos, solo porcentajes) arriba de los indicadores. En la tablet no se exporta
+(el Excel y el corte de estimacion se sacan en la computadora). Los calculos son los de ctrlp_core.
 """
 
 import datetime as dt
@@ -18,7 +18,6 @@ from kivy.uix.widget import Widget
 from PIL import Image, ImageDraw, ImageFont
 
 import ctrlp_core as core
-import ctrlp_excel as xl
 import ui_k as ui
 from paginas import Pagina
 from tabla import Tabla
@@ -111,14 +110,20 @@ def dibujar_grafica(tipo, fr, avance, escala=3):
     return img
 
 
+# columnas que se pueden ocultar en Informes (en la tablet no se exporta: el Excel se saca en la computadora)
+COLUMNAS_OPCIONALES = [
+    ("unidad", "Unidad"), ("cantidad", "Cantidad / contractual"), ("ant", "Acumulado anterior"),
+    ("p_ant", "% anterior"), ("per", "Este período / del día"), ("p_per", "% del período"),
+    ("tot", "Acumulado total"), ("p_tot", "% acumulado"), ("saldo", "Saldo"), ("obs", "Observaciones"),
+]
+
+
 class PaginaInformes(Pagina):
     clave = "informes"
     titulo = "Informes de avance"
 
     def __init__(self, app, **kw):
         super().__init__(app, **kw)
-        self.cab_der.add_widget(Boton("Corte de estimación", ancho=200, al_tocar=self.exportar_corte))
-        self.cab_der.add_widget(Boton("Exportar a Excel", primario=True, ancho=180, al_tocar=self.exportar))
         hoy = core.hoy_iso()
         lunes = (core.iso_a_fecha(hoy) - dt.timedelta(days=core.iso_a_fecha(hoy).weekday())).isoformat()
         # controles
@@ -226,7 +231,7 @@ class PaginaInformes(Pagina):
         self.contenedor = BoxLayout(orientation="vertical")
         self.cuerpo.add_widget(self.contenedor)
         self.tabla = None
-        self.visibles = set(k for k, _ in xl.COLUMNAS_OPCIONALES)
+        self.visibles = set(k for k, _ in COLUMNAS_OPCIONALES)
         self._graf_datos = None
         self.visor_pl = None
 
@@ -310,7 +315,7 @@ class PaginaInformes(Pagina):
 
         def ok(vis):
             self.visibles = vis
-            self.b_cols.text = f"Columnas · {len(vis)} de {len(xl.COLUMNAS_OPCIONALES)}"
+            self.b_cols.text = f"Columnas · {len(vis)} de {len(COLUMNAS_OPCIONALES)}"
             self.generar()
         dialogos.dialogo_columnas(self.visibles, ok)
 
@@ -575,7 +580,6 @@ class PaginaInformes(Pagina):
         anc = AnchorLayout(size_hint_x=None, width=dp(56))
         anc.add_widget(sw)
         f.add_widget(anc)
-        f.add_widget(Boton("Exportar…", ancho=120, al_tocar=self._exportar_plano))
         marco.add_widget(f)
         self.visor_pl = Visor(solo_ver=True)
         self.visor_pl.notas = self.notas_pl
@@ -628,84 +632,6 @@ class PaginaInformes(Pagina):
             self.generar()
         visor.elegir_color(cp if cual == "periodo" else ca,
                            "Color de lo " + ("de la fecha o período" if cual == "periodo" else "anterior"), ok)
-
-    def _exportar_plano(self):
-        import planos_base as pb
-        h = getattr(self, "hoja_pl", None)
-        if not h:
-            return
-        try:
-            modo, desde, hasta = self._rango()
-        except core.ErrorCtrlP as e:
-            ui.info("Informes", str(e))
-            return
-        p = self.p
-        x = p.plano(h["plano"])
-        it = p.item(h["item"])
-        cp, ca = self._colores_pl()
-        per = core.fecha_txt(hasta) if modo == "estado" else f"Del {core.fecha_txt(desde)} al {core.fecha_txt(hasta)}"
-        ub = getattr(self, "m_ub", None)
-        ub_txt = "" if (ub is None or ub.valor.startswith("Todas")) else f" · {ub.valor}"
-
-        def elegido(ruta):
-            try:
-                pb.exportar_imagen(p, h["plano"], self.marcas_pl, self.estilos_pl, ruta, p.nombre,
-                                   f"{it['codigo']} {it['descripcion'][:70]} · {x['nombre']} · "
-                                   f"{p.etiqueta_plano_ubic(h['plano'])}" + ub_txt,
-                                   [(cp, per), (ca, "Anterior")], notas=self.notas_pl)
-            except Exception as e:
-                ui.info("Exportar", f"No se pudo exportar:\n{e}")
-                return
-            ui.ofrecer_abrir("Plano exportado", f"Se guardó:\n{ruta}", ruta)
-        ui.guardar_archivo("Exportar plano marcado (PDF o PNG)", ui.carpeta_docs(self.app.cfg),
-                           f"{it['codigo']} - {x['nombre']} - {hasta}.pdf", (".pdf", ".png"), elegido)
-
-    # ---------------------------------------------------------------- exportar
-    def exportar(self):
-        if not self.p:
-            return
-        try:
-            modo, desde, hasta = self._rango()
-        except core.ErrorCtrlP as e:
-            ui.info("Informes", str(e))
-            return
-        base = os.path.splitext(os.path.basename(self.p.ruta))[0]
-        nombre = (f"{base} - Estado al {hasta}" if modo == "estado" else f"{base} - Período {desde} a {hasta}") + ".xlsx"
-        det = {"+ Por día": "dia", "+ Por semana": "semana"}.get(self.s_det.valor, "")
-
-        def elegido(ruta):
-            try:
-                xl.exportar_informe(self.p, ruta, modo, desde, hasta, det, self.visibles, self.sw_solo.activo,
-                                    self.sw_contr.activo)
-            except PermissionError:
-                ui.info("Exportar", "No se pudo guardar: el archivo está abierto en otra app.")
-                return
-            ui.ofrecer_abrir("Informe exportado", f"Se guardó:\n{ruta}", ruta)
-        ui.guardar_archivo("Exportar informe", ui.carpeta_docs(self.app.cfg), nombre, (".xlsx",), elegido)
-
-    def exportar_corte(self):
-        if not self.p:
-            return
-        try:
-            modo, desde, hasta = self._rango()
-        except core.ErrorCtrlP as e:
-            ui.info("Corte de estimación", str(e))
-            return
-        base = os.path.splitext(os.path.basename(self.p.ruta))[0]
-        nombre = (f"{base} - Corte de estimación del día {hasta}.xlsx" if desde == hasta else
-                  f"{base} - Corte de estimación {desde} a {hasta}.xlsx")
-
-        def elegido(ruta):
-            try:
-                xl.exportar_corte(self.p, ruta, desde, hasta, self.sw_contr.activo)
-            except PermissionError:
-                ui.info("Exportar", "No se pudo guardar: el archivo está abierto en otra app.")
-                return
-            ui.ofrecer_abrir("Corte de estimación", "Se guardó el presupuesto completo con la cantidad y el monto "
-                             "cobrables " + (f"del día {core.fecha_txt(hasta)}" if desde == hasta else
-                                             f"del {core.fecha_txt(desde)} al {core.fecha_txt(hasta)}") + f":\n{ruta}",
-                             ruta)
-        ui.guardar_archivo("Corte de estimación", ui.carpeta_docs(self.app.cfg), nombre, (".xlsx",), elegido)
 
 
 class FlujoAlto(BoxLayout):

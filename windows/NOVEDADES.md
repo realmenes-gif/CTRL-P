@@ -1,4 +1,9 @@
-## Ctrl-P v1.6 (Windows)
+## Ctrl-P v1.7 (Windows)
+
+- Informes ya no se queda «No responde»: los ajustes automáticos de tamaño (texto, tarjetas y tabla) tienen un freno y la tabla no empuja el tamaño de la ventana.
+- Si el programa deja de responder, errores.log anota qué parte se estaba moviendo.
+
+### Incluye lo de la v1.6
 
 - **En línea con Google** (nueva sección «En línea»): cada usuario entra con su cuenta de Google, pide acceso y abre el proyecto con la clave del proyecto. Sus cambios se envían y quedan pendientes de aprobación (en naranja con ⏳ en Informes) hasta que el administrador los acepta uno por uno o con «Seleccionar todo». Lo rechazado queda archivado y cada usuario recibe el aviso de qué se aceptó y qué no. Los proyectos viajan cifrados a tu Google Drive.
 - **Memorias por filas** en las actividades con sectores o tramos: el sector en una celda combinada, «No.» con cada tramo y las mismas columnas que las demás.

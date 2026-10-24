@@ -30,12 +30,17 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.6"
-VERSION_INTERNA = "1.6"
+VERSION = "v1.7"
+VERSION_INTERNA = "1.7"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.7", [
+        "Informes ya no se queda «No responde»: los ajustes automáticos de tamaño (texto, tarjetas y tabla) "
+        "tienen un freno y la tabla no empuja el tamaño de la ventana.",
+        "Si el programa deja de responder, errores.log anota qué parte se estaba moviendo.",
+    ]),
     ("v1.6", [
         "En línea con Google: cada usuario entra con su cuenta de Google, pide acceso y abre el proyecto con la "
         "clave del proyecto. Sus cambios se envían y quedan «pendientes de aprobación» (en naranja con ⏳ en "
@@ -3358,12 +3363,15 @@ class PaginaInformes(Pagina):
             self.kpis.append((a, b, c))
 
         def tam_kpi(e):
-            tam = 22 if e.width / ctk.ScalingTracker.get_widget_scaling(kp) > 1050 else 17
+            ancho = e.width / ctk.ScalingTracker.get_widget_scaling(kp)
+            previo = getattr(self, "_tam_kpi", None)
+            # con margen: no salta de un tamaño al otro alrededor del limite
+            tam = 22 if ancho > (1010 if previo == 22 else 1090) else 17
             if getattr(self, "_tam_kpi", None) != tam:
                 self._tam_kpi = tam
                 for l in self._kpi_num:
                     l.configure(font=F(tam, "bold"))
-        kp.bind("<Configure>", tam_kpi, add="+")
+        kp.bind("<Configure>", ui.anti_bucle(tam_kpi, nombre="tam_kpi"), add="+")
         self.contenedor = ctk.CTkFrame(self.cuerpo, fg_color="transparent")
         self.contenedor.grid(row=3, column=0, sticky="nsew", pady=(0, 20))
         self.contenedor.grid_columnconfigure(0, weight=1)
@@ -6887,10 +6895,18 @@ def vigilante(app, segundos=8):
             espera = time.monotonic() - estado["latido"]
             if espera > segundos and not estado["parado"]:
                 estado["parado"] = True
-                try:
-                    pila = "".join(traceback.format_stack(sys._current_frames()[hilo_principal]))
-                except Exception as e:
-                    pila = f"(no se pudo leer: {e})"
+                muestras = {}
+                for _k in range(20):                     # 20 muestras en 2 s: se ve si es un ida y vuelta
+                    try:
+                        fr = sys._current_frames()[hilo_principal]
+                        clave = "".join(traceback.format_stack(fr)[-6:])
+                        muestras[clave] = muestras.get(clave, 0) + 1
+                    except Exception:
+                        pass
+                    time.sleep(0.1)
+                pila = "\n".join(f"[{n} de 20 muestras]\n{t}" for t, n in sorted(muestras.items(), key=lambda x: -x[1]))
+                if ui.BUCLES:
+                    pila += f"\nAjustes frenados: {ui.BUCLES}"
                 registrar_error("No responde", f"La ventana lleva {espera:.0f} s sin responder. Página: "
                                 f"{getattr(app, 'pagina', '?')}. Proyecto abierto: {bool(getattr(app, 'p', None))}.\n"
                                 f"Dónde está el programa:\n{pila}")

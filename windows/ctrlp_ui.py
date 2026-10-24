@@ -697,6 +697,31 @@ def desplegar(tv, abrir=True):
             tv.see(primeros[0])
 
 
+def anti_bucle(fn, por_segundo=20, nombre=""):
+    """Protege un ajuste automatico de tamaño (<Configure>): si se dispara mas de «por_segundo» veces en un
+    segundo (dos widgets que se acomodan uno al otro sin fin), se frena 1 s y no se ejecuta. Asi la ventana
+    nunca queda «No responde» por un ida y vuelta de tamaños."""
+    import time
+    est = {"t0": 0.0, "n": 0, "pausa": 0.0}
+
+    def envuelto(*a, **k):
+        ahora_ = time.monotonic()
+        if ahora_ < est["pausa"]:
+            return None
+        if ahora_ - est["t0"] > 1.0:
+            est["t0"], est["n"] = ahora_, 0
+        est["n"] += 1
+        if est["n"] > por_segundo:
+            est["pausa"] = ahora_ + 1.0
+            BUCLES[nombre or getattr(fn, "__name__", "?")] = BUCLES.get(nombre or getattr(fn, "__name__", "?"), 0) + 1
+            return None
+        return fn(*a, **k)
+    return envuelto
+
+
+BUCLES = {}      # ajustes frenados por anti_bucle (se anotan en errores.log si el programa deja de responder)
+
+
 def ajustar_texto(etq, ref, resta=0, minimo=120):
     """El texto de etq se acomoda (salta de linea) al ancho actual de ref, menos 'resta' px (o resta() px)."""
     def f(_=None):
@@ -707,11 +732,13 @@ def ajustar_texto(etq, ref, resta=0, minimo=120):
             r = resta() if callable(resta) else resta
             esc = ctk.ScalingTracker.get_widget_scaling(etq) if isinstance(etq, ctk.CTkBaseClass) else 1.0
             nuevo = max(minimo, int((w - r) / esc))
-            if getattr(etq, "_wrap_actual", None) != nuevo:
+            actual = getattr(etq, "_wrap_actual", None)
+            if actual is None or abs(actual - nuevo) > 6:      # sin cambios chicos (evita idas y vueltas)
                 etq._wrap_actual = nuevo
                 etq.configure(wraplength=nuevo)
         except tk.TclError:
             pass
+    f = anti_bucle(f, nombre="ajustar_texto")
     ref.bind("<Configure>", f, add="+")
     etq.bind("<Configure>", f, add="+")     # tambien cuando cambia el texto o se acomodan los vecinos
     etq.bind("<Map>", f, add="+")
@@ -949,6 +976,8 @@ def tabla_fija(master, izq, centro, der):
         partes.append((tv, [c[0] for c in cols]))
         col += 1
     sb.grid(row=0, column=col, sticky="ns", padx=(2, 6), pady=8)
+    # el tamaño del marco lo da la pantalla, no las columnas (las tablas anchas no empujan la ventana)
+    marco.grid_propagate(False)
     arbol = ArbolFijo(partes)
     tvs = arbol.tvs
 
@@ -1098,7 +1127,7 @@ def tabla_fija(master, izq, centro, der):
                 actual = -100
             if abs(nuevo - actual) > 3:          # sin cambios pequeños: evita que la tabla se reacomode sin fin
                 tvi.column("descripcion", width=max(minimo, nuevo))
-        marco.bind("<Configure>", ajustar, add="+")
+        marco.bind("<Configure>", anti_bucle(ajustar, nombre="tabla_fija"), add="+")
     return marco, arbol
 
 

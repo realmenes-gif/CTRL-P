@@ -1,4 +1,4 @@
-Ctrl-P v1.6 · Control de avance detallado de obra
+Ctrl-P v1.7 · Control de avance detallado de obra
 ==================================================
 
 CREAR EL PROGRAMA PORTABLE (una sola vez, igual que PdFOL)
