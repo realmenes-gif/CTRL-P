@@ -762,7 +762,8 @@ class CtrlPApp(App):
 
             d = ui.formulario("Usuario protegido", f"En este proyecto, {self.usuario} tiene contraseña.",
                               [("clave", "Contraseña", True, "")], ["Cancelar", "Entrar"], ok, validar=validar)
-            d.bind(on_dismiss=lambda *_: None if self.p is p else p.cerrar())
+            # (la ventana se cierra antes de llamar a «ok»: se revisa un instante despues)
+            d.bind(on_dismiss=lambda *_: Clock.schedule_once(lambda *_: None if self.p is p else p.cerrar(), 0.3))
             return
         self._proyecto_listo(p)
 

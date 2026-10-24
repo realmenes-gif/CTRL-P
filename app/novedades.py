@@ -1,8 +1,12 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.3.1"
+VERSION_INTERNA = "1.3.2"
 
 CAMBIOS = [
+    ("1.3.2", [
+        "En línea: al escribir la clave y tocar «Aceptar» el proyecto ya se abre (antes se tomaba como si se hubiera cancelado).",
+        "Abrir un proyecto con usuario protegido por contraseña: ya no se cierra el proyecto al aceptar.",
+    ]),
     ("1.3.1", [
         "En línea: abrir un proyecto con la clave ya no se queda pegado (el descifrado usa OpenSSL, igual de rápido que en la computadora).",
         "En línea: cada paso queda anotado en errores.log para encontrar fallas.",

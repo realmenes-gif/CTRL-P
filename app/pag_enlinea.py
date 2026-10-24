@@ -126,7 +126,8 @@ def pedir_clave(nombre, verif=""):
         d = ui.formulario("Clave del proyecto", (f"«{nombre}». " if nombre else "") +
                           "Escribí la clave del proyecto (te la da el administrador). No se guarda en la tablet.",
                           [("clave", "Clave del proyecto", True, "")], ["Cancelar", "Aceptar"], ok, validar=validar)
-        d.bind(on_dismiss=lambda *_: None if respondio else seguir(None))
+        # la ventana se cierra ANTES de entregar la clave: se espera un instante para saber si fue «Cancelar»
+        d.bind(on_dismiss=lambda *_: Clock.schedule_once(lambda *_: None if respondio else seguir(None), 0.1))
     return mostrar
 
 
