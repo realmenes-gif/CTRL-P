@@ -28,7 +28,11 @@ import ctrlp_core as core
 # ---- datos del servidor (se completan al configurar Google; ver servidor_google/LEEME_GOOGLE.txt) ----
 URL_SERVIDOR = ""
 CLIENT_ID = ""
-CLIENT_SECRET = ""          # en apps de escritorio Google no lo considera secreto (va en el programa)
+CLIENT_SECRET = ""
+try:            # los pone GitHub al compilar, desde los secretos del repositorio (nunca en el código público)
+    from nube_datos import CLIENT_ID, CLIENT_SECRET, URL_SERVIDOR
+except ImportError:
+    pass
 
 ENCABEZADO = b"CTP1"
 RUTA_SESION = "nube_sesion.dat"

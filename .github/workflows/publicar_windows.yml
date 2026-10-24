@@ -61,13 +61,21 @@ jobs:
           if (Select-String -Path autoprueba.log -Pattern "FALLO" -Quiet) { Write-Error "La prueba fallo"; exit 1 }
           Write-Host "Prueba OK"
 
+      - name: Datos del servidor de Google (desde los secretos del repositorio)
+        if: steps.ver.outputs.existe == '0'
+        env:
+          NUBE_URL: ${{ secrets.NUBE_URL }}
+          NUBE_CLIENTE: ${{ secrets.NUBE_CLIENTE }}
+          NUBE_SECRETO: ${{ secrets.NUBE_SECRETO }}
+        run: python -c "import os; open('nube_datos.py','w',encoding='utf-8').write('URL_SERVIDOR = %r\nCLIENT_ID = %r\nCLIENT_SECRET = %r\n' % (os.environ['NUBE_URL'], os.environ['NUBE_CLIENTE'], os.environ['NUBE_SECRETO']))"
+
       - name: Armar Ctrl-P.exe
         if: steps.ver.outputs.existe == '0'
         shell: pwsh
         run: |
           python -m PyInstaller --noconfirm --clean --windowed --onedir --name Ctrl-P --icon ctrlp.ico `
             --collect-all customtkinter --collect-all pymupdf --collect-submodules cryptography `
-            --hidden-import lxml.etree --hidden-import PIL._tkinter_finder --hidden-import PIL.ImageTk `
+            --hidden-import lxml.etree --hidden-import nube_datos --hidden-import PIL._tkinter_finder --hidden-import PIL.ImageTk `
             --add-data "fuentes;fuentes" --add-data "recursos;recursos" --add-data "ctrlp.ico;." CtrlP.py
           if ($LASTEXITCODE -ne 0) { exit 1 }
 

@@ -30,12 +30,16 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.7"
-VERSION_INTERNA = "1.7"
+VERSION = "v1.8"
+VERSION_INTERNA = "1.8"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.8", [
+        "En línea: Ctrl-P ya trae puestos los datos del servidor de Google. Cada persona solo inicia sesión con "
+        "su cuenta de Google y escribe la clave del proyecto (ya no aparece «Configurar…»).",
+    ]),
     ("v1.7", [
         "Informes ya no se queda «No responde»: los ajustes automáticos de tamaño (texto, tarjetas y tabla) "
         "tienen un freno y la tabla no empuja el tamaño de la ventana.",

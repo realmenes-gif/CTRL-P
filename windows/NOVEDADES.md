@@ -1,4 +1,9 @@
-## Ctrl-P v1.7 (Windows)
+## Ctrl-P v1.8 (Windows)
+
+- En línea: Ctrl-P ya trae puestos los datos del servidor de Google. Cada persona solo inicia sesión con su cuenta de Google y escribe la clave del proyecto (ya no aparece «Configurar…»).
+
+### Incluye lo de la v1.7
+
 
 - Informes ya no se queda «No responde»: los ajustes automáticos de tamaño (texto, tarjetas y tabla) tienen un freno y la tabla no empuja el tamaño de la ventana.
 - Si el programa deja de responder, errores.log anota qué parte se estaba moviendo.

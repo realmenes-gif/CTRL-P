@@ -5,7 +5,7 @@ package.domain = com.consorciohospitaltocoa
 source.dir = app
 source.include_exts = py,png,jpg,ttf,txt,json
 source.exclude_dirs = __pycache__
-version = 1.2.0
+version = 1.2.1
 requirements = python3,kivy==2.3.1,pillow,openpyxl,et_xmlfile,sqlite3,openssl,pyjnius,android,certifi
 orientation = landscape, landscape-reverse
 fullscreen = 0
