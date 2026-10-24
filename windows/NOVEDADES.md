@@ -1,4 +1,9 @@
-## Ctrl-P v1.10 (Windows)
+## Ctrl-P v1.11 (Windows)
+
+- Memorias: la vereda va por sector (celda combinada) con el número de cada tramo; las actividades por hitos del formato que todavía no tienen hitos cargados salen igual con los 4 hitos (40/20/25/15) y sus requisitos.
+- Memorias: sin cantidad de diseño, las columnas de diseño y % quedan vacías en vez de 0.
+
+### Incluye lo de la v1.10
 
 - Memorias de cálculo con el formato propio de cada actividad (según «formatos de memorias»): por espacio o edificio, edificio con sus niveles, niveles en sub-columnas, secciones por nivel con tipos o equipos, sectores y tramos, fachadas con costo y pago por hitos con sus requisitos y nota. Las actividades sin formato propio siguen con el general.
 - En todas: cantidad de diseño, anterior, este período (por semana, o «ESTE PERÍODO» en el corte de estimación), acumulado y pendiente, más las columnas especiales de cada formato (% de avance, costo unitario, ejecutado por hito…). El cálculo es el mismo; encabezado con logos y sin firmas.

@@ -95,7 +95,7 @@ PLANTILLAS = {
                                          ("DUCTOS DE EQUIPO", "sub")],
                    nombres={"dis": "CANTIDAD DE DISEÑO ({u})"}, extras=_LISTA_PCT),
     # --- sectores y tramos
-    "17.02.02": _p(titulo="VEREDA DE CONCRETO", filas="tramo", etq=[("No", "tramo"), ("SECTOR", "ubic")],
+    "17.02.02": _p(titulo="VEREDA DE CONCRETO", filas="ubicacion", etq=[("SECTOR", "ed"), ("No", "nivel_num")],
                    nombres={"dis": "CANTIDAD DISEÑO ({u})", "per": "EJECUTADO"}),
     # --- fachadas (tramos) con costo
     "6.05": _p(filas="tramo", etq=[("N°", "num"), ("DESCRIPCIÓN", "tramo"), ("SISTEMA", "nivel_rom")],
@@ -109,6 +109,11 @@ HITOS_EJEMPLO = {_cod(c) for c in (
     "20.02.12 20.02.13 20.02.14 20.02.15 20.02.16 20.02.17 20.02.18 20.02.19 20.02.21 20.02.22 20.09.09 21.20.01 "
     "21.20.02 21.20.03 21.20.04 25.02.01 25.03.01 25.03.02 25.03.03 25.03.05 25.04.01 25.04.02 25.06.01 25.06.02 "
     "25.06.03 25.06.04 25.06.05 25.06.06 25.06.07 25.06.08 25.06.09 25.06.12 25.06.13 28.01").split()}
+
+# hitos del ejemplo: los usan las partidas de la lista que todavia no tienen hitos cargados en Datos fijos
+HITOS_ESTANDAR = [{"id": f"_estandar{k}", "nombre": n, "pct": pc, "tipo": ""} for k, (n, pc) in enumerate((
+    ("Despacho en puerto de origen", 40.0), ("Equipos arribados al país y en bodega", 20.0),
+    ("Instalación y puesta en obra", 25.0), ("Fase de pruebas y aceptación", 15.0)))]
 
 REQUISITOS = {
     "despacho en puerto de origen": "• Orden de compra  •  Factura  •  Certificados de origen  •  Evidencias "
@@ -134,6 +139,9 @@ def plantilla_de(p, it):
     sin_tipos = hitos and not any(h.get("tipo") for h in hitos)
     if sin_tipos and (c in HITOS_EJEMPLO or any(_norm(h["nombre"]).startswith("despacho") for h in hitos)):
         return ("hitos", None)
+    if not hitos and c in HITOS_EJEMPLO and not p.con.execute(
+            "SELECT COUNT(*) FROM avances WHERE item=? AND cantidad<>0", (it["id"],)).fetchone()[0]:
+        return ("hitos", None)          # todavia sin hitos ni avance: con los hitos del ejemplo
     if c in PLANTILLAS:
         return ("tabla", PLANTILLAS[c])
     return None
@@ -742,7 +750,7 @@ def hoja_tabla(wb, p, it, desde, hasta, enc, pl, solo_contractual=False, usados=
                 v = f"={dis_ref(f_, nvc)}-{L(acu_j)}{f_}" if (acu_j and d.con_diseno) else None
             elif cl == "pct":
                 acu_j = _col_acu(nvc)
-                v = f"=IFERROR({L(acu_j)}{f_}/{dis_ref(f_, nvc)},0)" if acu_j else None
+                v = f"=IFERROR({L(acu_j)}{f_}/{dis_ref(f_, nvc)},0)" if (acu_j and d.con_diseno) else None
                 fmt = PCT
             elif cl == "pu":
                 v = it.get("pu") or 0
@@ -795,7 +803,7 @@ def hoja_tabla(wb, p, it, desde, hasta, enc, pl, solo_contractual=False, usados=
                     M._unir(ws, fs[0], j, fs[-1], j, v, font=M._f(12, True), fill=blanco, borde=M._caja(), al=cen)
                 if cl == "etq" and sub == "dis_ed":
                     col_d = dis_tot or (dis_cols[0] if dis_cols else None)
-                    v = f"=SUM({L(col_d)}{fs[0]}:{L(col_d)}{fs[-1]})" if col_d else None
+                    v = f"=SUM({L(col_d)}{fs[0]}:{L(col_d)}{fs[-1]})" if (col_d and d.con_diseno) else None
                     M._unir(ws, fs[0], j, fs[-1], j, v, font=M._f(12), fill=blanco, borde=M._caja(), al=num_al,
                             fmt=M.NUM)
         f_fin = f - 1
@@ -880,7 +888,8 @@ def hoja_hitos(wb, p, it, desde, hasta, enc, solo_contractual=False, usados=None
     f += 1
     f_h0 = f
     dato = dict(font=M._f(10, nombre="Calibri"), borde=M._caja(), al=M.CENTRO)
-    for k, h in enumerate(d.hitos, start=1):
+    hitos = d.hitos or HITOS_ESTANDAR
+    for k, h in enumerate(hitos, start=1):
         ws.row_dimensions[f].height = 22
         M._unir(ws, f, 1, f, 1, k, font=M._f(10, True, nombre="Calibri"), borde=M._caja(), al=M.CENTRO)
         M._unir(ws, f, 2, f, 3, h["nombre"], font=M._f(10, True, nombre="Calibri"), borde=M._caja(), al=M.IZQ)
@@ -900,7 +909,7 @@ def hoja_hitos(wb, p, it, desde, hasta, enc, solo_contractual=False, usados=None
     f_tot = f
     f += 1
     # unidades base del hito 1 (cuando el despacho es parcial)
-    h1 = d.hitos[0] if d.hitos else None
+    h1 = hitos[0] if hitos else None
     u1 = d.unid_hito.get(h1["id"], [0.0] * d.n) if h1 else [0.0] * d.n
     u1_acu = sum(u1)
     u1_per = sum(u1[1:])
@@ -938,7 +947,7 @@ def hoja_hitos(wb, p, it, desde, hasta, enc, solo_contractual=False, usados=None
     M._unir(ws, f, 1, f, c_pen, "REQUISITOS POR HITO", font=M._f(11, True, blanca=True, nombre="Calibri"),
             fill=M._r(M.AZUL), borde=M._caja(), al=M.CENTRO)
     f += 1
-    for k, h in enumerate(d.hitos, start=1):
+    for k, h in enumerate(hitos, start=1):
         req = REQUISITOS.get(_norm(h["nombre"]))
         ws.row_dimensions[f].height = 32 if req and len(req) > 110 else 22
         M._unir(ws, f, 1, f, 3, f"HITO {k} · {h['nombre']}", font=M._f(10, True, nombre="Calibri"),
