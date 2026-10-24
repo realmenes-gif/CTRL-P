@@ -1,4 +1,4 @@
-Ctrl-P v1.2 · Control de avance detallado de obra
+Ctrl-P v1.3 · Control de avance detallado de obra
 ==================================================
 
 CREAR EL PROGRAMA PORTABLE (una sola vez, igual que PdFOL)
@@ -65,7 +65,8 @@ PRIMER USO
    Cada actividad sale según sus datos fijos: un bloque por tipo de hito (ej.
    MURO / TABIQUERÍA / TRASDOSADO) con la cantidad de diseño por edificio y
    nivel; sin tipos, un solo bloque; sin datos fijos, lo ejecutado por
-   ubicación y lo pendiente contra la cantidad total.
+   ubicación y lo pendiente contra la cantidad total. Con un solo nivel no
+   lleva columna TOTAL, y las áreas exteriores van con el nivel I.
 7. Enter en las tablas (Registro, Datos fijos, Ubicaciones): como en Excel,
    el valor queda en la casilla y baja a la de abajo; en la última se queda.
 

@@ -29,12 +29,16 @@ import ctrlp_actualizar as act_
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.2"
-VERSION_INTERNA = "1.2"
+VERSION = "v1.3"
+VERSION_INTERNA = "1.3"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.3", [
+        "Memorias de cálculo: con un solo nivel ya no sale la columna TOTAL extra, y las áreas exteriores van en "
+        "la misma columna que el nivel I.",
+    ]),
     ("v1.2", [
         "Informes › «Memorias de cálculo»: una pestaña por actividad del filtro elegido, con el formato de la "
         "memoria de estimación (logos, datos del proyecto, bloques por tipo, cantidades de diseño por edificio y "

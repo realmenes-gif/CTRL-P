@@ -221,9 +221,11 @@ def datos_partida(p, it, desde, hasta, cortes, solo_contractual=False):
     eds = sorted({ubic[nv]["edificio"] for nv in usados}, key=lambda e: orden_ed.get(e, 0))
     nombre_ed = {u["edificio"]: u["ed_nombre"] for u in ubic.values()}
     col_de = {nv: (ubic[nv]["nv_nombre"] or "") for nv in usados}
-    columnas = sorted(set(col_de.values()), key=_orden_nivel)
-    if not columnas:
-        columnas = [""]
+    otras = sorted({c for c in col_de.values() if c}, key=_orden_nivel)
+    if otras:
+        # un area exterior sin niveles va en la primera columna (I / NIVEL 1): es practicamente lo mismo
+        col_de = {nv: (c or otras[0]) for nv, c in col_de.items()}
+    columnas = otras or [""]
     obs = []
     for (iid_, nv), lista in p.observaciones(desde, hasta).items():
         if iid_ == iid:
@@ -289,7 +291,8 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
     nsem = len(cortes)
     # columnas: A tipo | diseño n | TOTAL | anterior n | semanas n c/u | pendiente n
     c_dis = 2
-    c_tot = c_dis + n
+    sin_total = n == 1               # un solo nivel: la columna de diseño ya es el total (sin columna TOTAL)
+    c_tot = c_dis + (0 if sin_total else n)
     c_ant = c_tot + 1
     c_sem = [c_ant + n * (k + 1) for k in range(nsem)]
     c_pen = c_ant + n * (nsem + 1)
@@ -371,7 +374,8 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
     _unir(ws, f, 1, f, 1, "TIPO" if d["con_tipos"] else "UBICACIÓN",
           borde=Border(left=MEDIA, right=FINA, top=MEDIA), **th)
     _unir(ws, f, c_dis, f, c_dis + n - 1, "CANTIDAD DE DISEÑO", borde=Border(left=FINA, right=FINA, top=MEDIA), **th)
-    _unir(ws, f, c_tot, f, c_tot, "TOTAL", borde=Border(left=FINA, top=MEDIA), **th)
+    if not sin_total:
+        _unir(ws, f, c_tot, f, c_tot, "TOTAL", borde=Border(left=FINA, top=MEDIA), **th)
     _unir(ws, f, c_ant, f, c_ant + n - 1, "PERIODO ANTERIOR", borde=Border(left=MEDIA, right=FINA, top=MEDIA,
                                                                             bottom=FINA), **th)
     for k, (d0, d1) in enumerate(cortes):
@@ -386,7 +390,7 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
 
     def borde_col(c, fondo=FINA):
         izq = MEDIA if (c == 1 or c in grupos_ant) else FINA
-        der = MEDIA if c == ultima_tabla else (None if c == c_tot else FINA)
+        der = MEDIA if c == ultima_tabla else (None if (c == c_tot and not sin_total) else FINA)
         return Border(left=izq, right=der, top=FINA, bottom=fondo)
 
     for tp in d["tipos"]:
@@ -396,8 +400,10 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
         for c in range(1, ultima_tabla + 1):
             if c == 1:
                 v = tit
-            elif c == c_tot:
+            elif c == c_tot and not sin_total:
                 v = "TOTAL"
+            elif sin_total:
+                v = etiqueta_nivel(cols[0]) if cols[0] else ""
             else:
                 rel = (c - c_dis) if c < c_tot else (c - c_ant) % n
                 v = etiqueta_nivel(cols[rel])
@@ -426,8 +432,9 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
                 _celda(ws, f, c_pen + j, f"=+{L(c_dis + j)}{f}-SUM({suma})" if d["con_diseno"] else None, _f(12),
                        None, borde_col(c_pen + j), CONT)
             dis_cols = "+".join(f"{get_column_letter(c_dis + j)}{f}" for j in range(n))
-            _celda(ws, f, c_tot, f"=ROUND({dis_cols},2)" if d["con_diseno"] else None, _f(12), _r(BLANCO),
-                   borde_col(c_tot), NUM, CENTRO)
+            if not sin_total:
+                _celda(ws, f, c_tot, f"=ROUND({dis_cols},2)" if d["con_diseno"] else None, _f(12), _r(BLANCO),
+                       borde_col(c_tot), NUM, CENTRO)
             f += 1
         f_fin = f - 1
         # subtotal
@@ -438,7 +445,7 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
                 v = "SUB TOTAL"
             elif c <= c_tot and not d["con_diseno"]:
                 v = None
-            elif c == c_tot:
+            elif c == c_tot and not sin_total:
                 v = "=ROUND(" + "+".join(f"{get_column_letter(c_dis + j)}{f}" for j in range(n)) + ",2)"
             elif f_fin >= f_ini:
                 v = f"=SUM({L}{f_ini}:{L}{f_fin})"
