@@ -48,3 +48,4 @@ windows/Ctrl-P_portable/
 windows/*.zip
 windows/*.sha256
 windows/autoprueba*.log
+windows/*_instalador.exe

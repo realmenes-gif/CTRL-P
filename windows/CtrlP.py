@@ -29,12 +29,19 @@ import ctrlp_actualizar as act_
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.3"
-VERSION_INTERNA = "1.3"
+VERSION = "v1.4"
+VERSION_INTERNA = "1.4"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.4", [
+        "Instalador (Ctrl-P_instalador.exe): se instala para tu usuario sin pedir administrador, con acceso en el "
+        "menú Inicio y el escritorio, doble clic en los proyectos .ctrlp y desinstalador. Instalado, los proyectos "
+        "van a Documentos\\CTRL-P DOC. Se sigue actualizando solo desde el programa.",
+        "Informes: la barra horizontal solo aparece cuando hay columnas que desplazar (antes se podía quedar "
+        "«No responde» al tocarla).",
+    ]),
     ("v1.3", [
         "Memorias de cálculo: con un solo nivel ya no sale la columna TOTAL extra, y las áreas exteriores van en "
         "la misma columna que el nivel I.",
@@ -637,8 +644,8 @@ class App(ctk.CTk):
         if not self.act["info"] or self.act["bajando"]:
             return
         if not getattr(sys, "frozen", False):
-            ui.info(self, "Actualizaciones", "La actualización automática funciona en el programa portable "
-                                             "(Ctrl-P.exe).\n\nEstás usando el .py: bajá la versión nueva desde "
+            ui.info(self, "Actualizaciones", "La actualización automática funciona en el programa instalado o "
+                                             "portable (Ctrl-P.exe).\n\nEstás usando el .py: bajá la versión nueva desde "
                                              f"GitHub ({self.act['info'].get('web', '')}).")
             return
         app_dir = os.path.dirname(sys.executable)
@@ -4778,7 +4785,7 @@ class PaginaApariencia(Pagina):
         t2 = ui.Tarjeta(self.cuerpo)
         t2.grid(row=1, column=0, sticky="nw", pady=(16, 0))
         etiqueta(t2, "Actualizaciones", 15, "bold").grid(row=0, column=0, columnspan=3, sticky="w", padx=22, pady=(16, 2))
-        etiqueta(t2, f"Versión: {VERSION}  ·  by {AUTOR}", 13).grid(row=1, column=0, sticky="w", padx=22, pady=(4, 0))
+        etiqueta(t2, f"Versión {'instalada' if act_.es_instalado() else 'portable'}: {VERSION}  ·  by {AUTOR}", 13).grid(row=1, column=0, sticky="w", padx=22, pady=(4, 0))
         boton(t2, "Buscar actualizaciones", ancho=190, command=lambda: app.buscar_actualizacion(True)).grid(
             row=1, column=1, padx=(24, 8), pady=(4, 0))
         boton(t2, "Novedades", ancho=120, command=app.novedades).grid(row=1, column=2, padx=(0, 22), pady=(4, 0))
@@ -6257,6 +6264,7 @@ def main():
             f.write(str(os.getpid()))
     except OSError:
         pass
+    act_.anotar_version_instalada(VERSION_INTERNA)
     archivo = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].lower().endswith(core.EXT) else None
     prueba = os.environ.get("CTRLP_AUTOPRUEBA")
     try:

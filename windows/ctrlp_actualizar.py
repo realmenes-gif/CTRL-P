@@ -21,6 +21,31 @@ EXE_PORTABLE = "Ctrl-P.exe"
 CARPETA_DOCS = "CTRL-P DOC"
 
 
+ID_INSTALADOR = "{8F3B2C71-5D4A-4E9B-A1C6-2E7D9B0F4C58}_is1"
+
+
+def es_instalado():
+    """Ctrl-P instalado con el instalador (no el portable): tiene su desinstalador al lado."""
+    return (os.name == "nt" and getattr(sys, "frozen", False)
+            and os.path.isfile(os.path.join(os.path.dirname(sys.executable), "unins000.exe")))
+
+
+def anotar_version_instalada(version):
+    """Despues de actualizar desde el programa, «Aplicaciones instaladas» de Windows muestra la version nueva."""
+    if not es_instalado():
+        return
+    try:
+        import winreg
+        k = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                           "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + ID_INSTALADOR, 0,
+                           winreg.KEY_READ | winreg.KEY_SET_VALUE)
+        if winreg.QueryValueEx(k, "DisplayVersion")[0] != version:
+            winreg.SetValueEx(k, "DisplayVersion", 0, winreg.REG_SZ, version)
+            winreg.SetValueEx(k, "DisplayName", 0, winreg.REG_SZ, f"Ctrl-P v{version}")
+    except Exception:
+        pass
+
+
 class Cancelado(Exception):
     pass
 

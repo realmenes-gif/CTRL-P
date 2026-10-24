@@ -1,4 +1,4 @@
-Ctrl-P v1.3 · Control de avance detallado de obra
+Ctrl-P v1.4 · Control de avance detallado de obra
 ==================================================
 
 CREAR EL PROGRAMA PORTABLE (una sola vez, igual que PdFOL)
@@ -11,8 +11,11 @@ CREAR EL PROGRAMA PORTABLE (una sola vez, igual que PdFOL)
    ahí ya no hace falta Python.
 
 ACTUALIZACIONES (desde la v1.1, igual que PdFOL)
-- La forma más fácil de tener Ctrl-P es bajar  Ctrl-P_portable.zip  de
-  https://github.com/realmenes-gif/CTRL-P/releases  (no hace falta Python).
+- La forma más fácil de tener Ctrl-P es bajar  Ctrl-P_instalador.exe  de
+  https://github.com/realmenes-gif/CTRL-P/releases  (no hace falta Python ni
+  administrador). Queda en el menú Inicio y en el escritorio, abre los .ctrlp
+  con doble clic y los proyectos van a Documentos\CTRL-P DOC.
+  También está  Ctrl-P_portable.zip  (carpeta para USB, sin instalar).
 - Al abrir, si hay internet, Ctrl-P revisa si hay una versión nueva y la avisa
   arriba: «Ver cambios», «Actualizar» o «Más tarde». También en Apariencia ›
   Buscar actualizaciones.

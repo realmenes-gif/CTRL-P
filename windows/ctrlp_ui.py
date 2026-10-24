@@ -48,11 +48,27 @@ def recursos():
 NOMBRE_DOCS = "CTRL-P DOC"
 
 
+def _documentos():
+    """La carpeta Documentos real (aunque esté en OneDrive o movida)."""
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
+            if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf) == 0 and buf.value:   # CSIDL_PERSONAL
+                return buf.value
+        except Exception:
+            pass
+    return os.path.join(os.path.expanduser("~"), "Documents")
+
+
 def carpeta_docs():
     """Carpeta por defecto para guardar y exportar: «CTRL-P DOC» junto al .exe portable (se crea sola).
-    Si ahí no se puede escribir (por ejemplo en Archivos de programa), usa Documentos\\CTRL-P DOC."""
+    Instalado (o si ahí no se puede escribir), usa Documentos\\CTRL-P DOC."""
     base = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
-    for raiz in (base, os.path.join(os.path.expanduser("~"), "Documents"), os.path.expanduser("~")):
+    instalado = getattr(sys, "frozen", False) and os.path.isfile(os.path.join(base, "unins000.exe"))
+    raices = ([] if instalado else [base]) + [_documentos(), os.path.expanduser("~")]
+    for raiz in raices:
         ruta = os.path.join(raiz, NOMBRE_DOCS)
         try:
             os.makedirs(ruta, exist_ok=True)
@@ -989,11 +1005,35 @@ def tabla_fija(master, izq, centro, der):
     mov = vistas.get("centro", vistas.get("izq"))
     if mov:
         tvm, cm = mov
-        sbx = ctk.CTkScrollbar(marco, command=tvm.xview, orientation="horizontal", button_color=C["suave_h"],
+        estado = {"cabe": None, "ultimo": None}
+
+        def mover_x(*a):
+            # si todas las columnas ya se ven, no hay nada que desplazar (tocar la barra no hace nada)
+            if estado["cabe"]:
+                return
+            tvm.xview(*a)
+
+        sbx = ctk.CTkScrollbar(marco, command=mover_x, orientation="horizontal", button_color=C["suave_h"],
                                button_hover_color=C["borde"])
-        tvm.configure(xscrollcommand=sbx.set)
+
+        def al_desplazar_x(a, b):
+            a, b = float(a), float(b)
+            if estado["ultimo"] == (a, b):
+                return                                 # sin cambios: no se redibuja (evita idas y vueltas)
+            estado["ultimo"] = (a, b)
+            cabe = a <= 0.0 and b >= 1.0
+            if cabe != estado["cabe"]:
+                estado["cabe"] = cabe
+                if cabe:
+                    sbx.grid_remove()                  # la barra solo aparece cuando hay columnas que desplazar
+                else:
+                    sbx.grid(row=1, column=cm, sticky="ew", padx=(0 if cm else 8, 0), pady=(0, 6))
+            if not cabe:
+                sbx.set(a, b)
+        tvm.configure(xscrollcommand=al_desplazar_x)
         sbx.grid(row=1, column=cm, sticky="ew", padx=(0 if cm else 8, 0), pady=(0, 6))
-        tvm.bind("<Shift-MouseWheel>", lambda e: (tvm.xview_scroll(-1 if e.delta > 0 else 1, "units"), "break")[1])
+        tvm.bind("<Shift-MouseWheel>",
+                 lambda e: ("break" if estado["cabe"] else (tvm.xview_scroll(-1 if e.delta > 0 else 1, "units"), "break")[1]))
 
     # la descripcion se agranda para llenar el espacio, o se achica (hasta 150) para dejar lugar al centro
     if centro and "izq" in vistas:

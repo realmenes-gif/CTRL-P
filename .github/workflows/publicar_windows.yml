@@ -93,6 +93,33 @@ jobs:
           $h = (Get-FileHash Ctrl-P_portable.zip -Algorithm SHA256).Hash.ToLower()
           "$h  Ctrl-P_portable.zip" | Out-File -Encoding ascii Ctrl-P_portable.zip.sha256
 
+      - name: Armar el instalador (Inno Setup) y probarlo instalado
+        if: steps.ver.outputs.existe == '0'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc /Q "/DMiVersion=${{ steps.ver.outputs.version }}" "/FCtrl-P_instalador" CtrlP.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # se instala sin preguntas y se prueba el programa instalado
+          $p = Start-Process .\Ctrl-P_instalador.exe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER" -PassThru
+          $null = $p.Handle
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Error "El instalador no termino"; exit 1 }
+          $exe = "$env:LOCALAPPDATA\Programs\Ctrl-P\Ctrl-P.exe"
+          if (-not (Test-Path $exe)) { Write-Error "No quedo instalado"; exit 1 }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\Ctrl-P\unins000.exe")) { Write-Error "Falta el desinstalador"; exit 1 }
+          python prueba\crear_prueba.py "$env:RUNNER_TEMP\prueba_inst"
+          $env:CTRLP_AUTOPRUEBA = "$env:RUNNER_TEMP\prueba_inst\Registro_Semanal.ctrlp"
+          $env:CTRLP_AUTOPRUEBA_LOG = Join-Path $PWD "autoprueba_inst.log"
+          $p = Start-Process $exe -PassThru
+          $null = $p.Handle
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); Write-Error "Ctrl-P instalado no termino la prueba"; exit 1 }
+          if (Test-Path autoprueba_inst.log) { Get-Content autoprueba_inst.log }
+          if (-not (Select-String -Path autoprueba_inst.log -Pattern "AUTOPRUEBA OK" -Quiet)) { Write-Error "La prueba del instalado fallo"; exit 1 }
+          Remove-Item Env:CTRLP_AUTOPRUEBA
+          if (Test-Path "$env:LOCALAPPDATA\Programs\Ctrl-P\CTRL-P DOC") { Write-Error "Instalado no debe crear CTRL-P DOC en la carpeta del programa"; exit 1 }
+          Write-Host "Instalador OK"
+
       - name: Crear la version
         if: steps.ver.outputs.existe == '0'
         uses: softprops/action-gh-release@v2
@@ -103,5 +130,6 @@ jobs:
           body_path: windows/NOVEDADES.md
           make_latest: true
           files: |
+            windows/Ctrl-P_instalador.exe
             windows/Ctrl-P_portable.zip
             windows/Ctrl-P_portable.zip.sha256
