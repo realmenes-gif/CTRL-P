@@ -1,4 +1,4 @@
-Ctrl-P v1.5 · Control de avance detallado de obra
+Ctrl-P v1.6 · Control de avance detallado de obra
 ==================================================
 
 CREAR EL PROGRAMA PORTABLE (una sola vez, igual que PdFOL)
@@ -75,6 +75,13 @@ PRIMER USO
    lleva columna TOTAL, y las áreas exteriores van con el nivel I.
 7. Enter en las tablas (Registro, Datos fijos, Ubicaciones): como en Excel,
    el valor queda en la casilla y baja a la de abajo; en la última se queda.
+
+EN LÍNEA (Google)
+- Sección «En línea»: iniciar sesión con Google, ver los proyectos, pedir acceso,
+  abrir con la clave del proyecto y «Sincronizar ahora».
+- Configuración (una sola vez, el administrador): ver «Ver los pasos» en
+  En línea (recursos/servidor/PASOS_GOOGLE.txt).
+- La clave del proyecto nunca se guarda en archivos; se pide al sincronizar.
 
 USUARIOS
 - Cualquiera puede crear su usuario con contraseña («Crear usuario con

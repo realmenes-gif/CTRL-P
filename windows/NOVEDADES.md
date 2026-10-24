@@ -1,4 +1,10 @@
-## Ctrl-P v1.5 (Windows)
+## Ctrl-P v1.6 (Windows)
+
+- **En línea con Google** (nueva sección «En línea»): cada usuario entra con su cuenta de Google, pide acceso y abre el proyecto con la clave del proyecto. Sus cambios se envían y quedan pendientes de aprobación (en naranja con ⏳ en Informes) hasta que el administrador los acepta uno por uno o con «Seleccionar todo». Lo rechazado queda archivado y cada usuario recibe el aviso de qué se aceptó y qué no. Los proyectos viajan cifrados a tu Google Drive.
+- **Memorias por filas** en las actividades con sectores o tramos: el sector en una celda combinada, «No.» con cada tramo y las mismas columnas que las demás.
+- Informes: sin el espacio vacío entre «% aporte» y «Período»; la barra horizontal solo aparece cuando hace falta.
+
+### Incluye lo de la v1.5
 
 - Cortes semanales a elección (por defecto de viernes a jueves): en Proyecto › Datos del proyecto o tocando «Semanas: …» en Informes. Se usan en «+ Por semana» y en las memorias de cálculo.
 - Corte de estimación: «Corte + memorias» agrega las memorias de cálculo con una sola columna «ESTE PERÍODO» (la suma del período, sin semanas). Las de «Memorias de cálculo» siguen con el desglose por semana.

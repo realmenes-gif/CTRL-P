@@ -1,0 +1,55 @@
+CONECTAR CTRL-P CON GOOGLE (lo hace una sola vez el administrador, con su Gmail)
+================================================================================
+Son 3 partes. Al final tenés 3 datos para pegar en Ctrl-P: la URL del servidor, el ID de cliente y el
+secreto del cliente. Ninguno es una contraseña.
+
+A. EL SERVIDOR (Apps Script, en tu Google Drive)
+   1. Entrá a  https://script.google.com  con tu Gmail › «Nuevo proyecto».
+      Arriba a la izquierda cambiale el nombre a «Ctrl-P servidor».
+   2. Borrá lo que trae y pegá el código del servidor
+      (en Ctrl-P › En línea › «Copiar código del servidor»).
+   3. En las primeras líneas del código, donde dice ADMIN_EMAIL, poné tu Gmail entre las comillas.
+      Guardá (Ctrl+S). CLIENT_ID lo completás en el paso B4.
+
+B. EL ACCESO PARA «INICIAR SESIÓN CON GOOGLE»
+   1. Entrá a  https://console.cloud.google.com  › arriba «Seleccionar proyecto» › «Proyecto nuevo» ›
+      nombre «Ctrl-P» › Crear (y dejalo seleccionado).
+   2. Menú › «APIs y servicios» › «Pantalla de consentimiento de OAuth» (o «Google Auth Platform»):
+      - Comenzar · Nombre de la app: Ctrl-P · Correo de asistencia: tu Gmail.
+      - Público: «Externo». Datos de contacto: tu Gmail. Aceptar y Crear.
+      - En «Público», tocá «Publicar app» (queda «En producción»). No hace falta verificación:
+        Ctrl-P solo pide el correo de la persona.
+   3. «Clientes» (o «Credenciales») › «Crear cliente» (ID de cliente de OAuth):
+      - Tipo de aplicación: «App de escritorio» · Nombre: Ctrl-P · Crear.
+      - Copiá el «ID de cliente» y el «Secreto del cliente».
+   4. Volvé al Apps Script y pegá el ID de cliente en CLIENT_ID (entre las comillas). Guardá.
+
+C. PUBLICAR EL SERVIDOR
+   1. En el Apps Script: «Implementar» › «Nueva implementación» › engranaje › «Aplicación web».
+      - Ejecutar como: «Yo».
+      - Quién tiene acceso: «Cualquier usuario».
+      - Implementar.
+   2. Google pide autorizar: elegí tu cuenta › si dice «Google no verificó esta app», tocá
+      «Configuración avanzada» › «Ir a Ctrl-P servidor» › Permitir. (Es tu propio script: guarda los
+      proyectos cifrados en una carpeta «Ctrl-P en línea» de tu Drive.)
+   3. Copiá la «URL de la aplicación web» (termina en /exec).
+   Si algún día cambia el código: «Implementar» › «Gestionar implementaciones» › lápiz › Versión
+   «Nueva versión» › Implementar (así la URL sigue siendo la misma).
+
+D. EN CTRL-P (como CARLOS - CONSORCIO)
+   1. En línea › «Configurar…» › pegá la URL, el ID de cliente y el secreto › Guardar.
+   2. «Iniciar sesión con Google» (se abre el navegador; elegí tu Gmail).
+   3. Abrí tu proyecto › En línea › «Subir a Google…» y elegí la clave del proyecto.
+      La clave se la pasás en persona a quien deba entrar; Ctrl-P no la guarda en ningún archivo.
+   4. Mandale los 3 datos a quien mantiene Ctrl-P para dejarlos puestos en la próxima versión: así los
+      demás solo instalan, inician sesión con su Google y piden acceso.
+
+CÓMO TRABAJAN LOS DEMÁS
+   - En línea › «Iniciar sesión con Google» › «Ver proyectos» › «Pedir acceso».
+   - Vos, al «Sincronizar ahora», aceptás su correo.
+   - Ellos «Abrir» (con la clave del proyecto), registran, y «Sincronizar ahora» envía sus cambios.
+   - Vos, al sincronizar, ves la lista de cambios: uno por uno o «Seleccionar todo» › «Aplicar lo marcado».
+     Lo que no marques queda rechazado y archivado en el historial. En rojo: el mismo dato también cambió
+     en tu proyecto (elegís si usás el recibido).
+   - Ellos, al sincronizar, reciben lo aprobado y el aviso de qué se aceptó y qué no. Mientras tanto, en
+     sus Informes lo suyo sale en naranja con ⏳ «pendiente de aprobación».

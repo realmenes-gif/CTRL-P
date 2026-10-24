@@ -26,15 +26,27 @@ import ctrlp_memoria as mc
 import ctrlp_ui as ui
 import ctrlp_planos as pl
 import ctrlp_actualizar as act_
+import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.5"
-VERSION_INTERNA = "1.5"
+VERSION = "v1.6"
+VERSION_INTERNA = "1.6"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.6", [
+        "En línea con Google: cada usuario entra con su cuenta de Google, pide acceso y abre el proyecto con la "
+        "clave del proyecto. Sus cambios se envían y quedan «pendientes de aprobación» (en naranja con ⏳ en "
+        "Informes) hasta que el administrador los acepta uno por uno o todos; lo rechazado queda archivado y "
+        "cada usuario recibe el aviso. Los proyectos viajan cifrados a tu Google Drive.",
+        "Memorias de cálculo por filas en las actividades con sectores o tramos: el sector en una celda "
+        "combinada, «No.» con cada tramo, y las mismas columnas que las demás (cantidad, período anterior, "
+        "semanas o «ESTE PERÍODO», pendiente).",
+        "Informes: sin el espacio vacío entre «% aporte» y «Período» (la descripción usa ese lugar); la barra "
+        "horizontal ya no aparece cuando no hay nada que desplazar.",
+    ]),
     ("v1.5", [
         "Cortes semanales a elección (por defecto de viernes a jueves): en Proyecto › Datos del proyecto o tocando "
         "«Semanas: …» en Informes. Se usan en «+ Por semana» y en las memorias de cálculo.",
@@ -128,6 +140,8 @@ class App(ctk.CTk):
         self.p = None
         self.pagina = None
         self.paginas = {}
+        self.claves_nube = {}           # claves de proyectos en linea: solo en memoria, nunca en archivos
+        self.pendientes_nube = None
         self.modo_actual = None
         self.archivo_inicial = archivo_inicial
         ui.estilo_tablas(self)
@@ -204,7 +218,7 @@ class App(ctk.CTk):
         self.contenido.grid_rowconfigure(1, weight=1)
         self._armar_franja()
         for clase in (PaginaProyecto, PaginaPresupuesto, PaginaUbicaciones, PaginaDatosFijos, PaginaRegistro,
-                      PaginaPlanos, PaginaInformes, PaginaApariencia):
+                      PaginaPlanos, PaginaInformes, PaginaEnLinea, PaginaApariencia):
             pg = clase(self.contenido, self)
             self.paginas[pg.clave] = pg
         self.ir("proyecto")
@@ -525,7 +539,7 @@ class App(ctk.CTk):
                 return
             for t in self.lateral.gettags(it):
                 if t in self.paginas:
-                    if self.p is None and t not in ("proyecto", "apariencia"):
+                    if self.p is None and t not in ("proyecto", "apariencia", "enlinea"):
                         return
                     self.ir(t)
                     return
@@ -685,6 +699,55 @@ class App(ctk.CTk):
         threading.Thread(target=hilo, daemon=True).start()
         self._mirar_cola()
 
+    def en_fondo(self, titulo, texto, fn, cancelar=None):
+        """Hace fn() en segundo plano (internet) con una ventanita de espera; la ventana sigue respondiendo.
+        Devuelve el resultado de fn o vuelve a lanzar su error aqui."""
+        import time
+        dlg = DialogoProgreso(self, titulo, texto, cancelar=cancelar)
+        res = {}
+
+        def correr():
+            try:
+                res["v"] = fn()
+            except BaseException as e:      # se vuelve a lanzar en la ventana principal
+                res["e"] = e
+        h = threading.Thread(target=correr, daemon=True)
+        h.start()
+        f = 0.03
+        while h.is_alive():
+            f += (0.95 - f) * 0.015
+            try:
+                dlg.barra.set(f)
+                dlg.update()
+            except tk.TclError:
+                pass
+            time.sleep(0.04)
+        try:
+            dlg.cerrar()
+        except tk.TclError:
+            pass
+        if "e" in res:
+            raise res["e"]
+        return res.get("v")
+
+    def calcular_pendientes_nube(self):
+        """Usuario en linea: sus avances todavia sin aprobar (se marcan en Informes)."""
+        self.pendientes_nube = None
+        v = nb.vinculo(self.p) if self.p is not None else None
+        if not v or v["rol"] == "admin":
+            return
+        base = nb.ruta_base(v["proyecto"])
+        if not os.path.isfile(base):
+            return
+        try:
+            with open(base, "rb") as f:
+                b = f.read()
+            ids, imp = nb.pendientes_ids(self.p, b)
+            self.pendientes_nube = (ids, {r["item"] for r in imp["nuevos"]} | {r["item"] for _l, r in imp["modificados"]})
+            self._rev_pend = self.p.rev
+        except Exception as e:
+            registrar_error("Pendientes en línea", str(e))
+
     def reiniciar_para_actualizar(self):
         # el proyecto se cierra como siempre (pregunta si guardar lo pendiente)
         if self.p and not self.cerrar_proyecto():
@@ -773,6 +836,7 @@ class App(ctk.CTk):
 
     def proyecto_cargado(self):
         self.title(f"Ctrl-P {VERSION} — {os.path.basename(self.p.ruta)}")
+        self.calcular_pendientes_nube()
         for pg in self.paginas.values():
             if hasattr(pg, "al_cambiar_proyecto"):
                 pg.al_cambiar_proyecto()
@@ -3489,9 +3553,16 @@ class PaginaInformes(Pagina):
         t = calc.totales()
         mon = self.p.get_meta("moneda", "US$")
         estado = modo == "estado"
+        # en linea: lo del usuario que el administrador todavia no aprobo va marcado «pendiente»
+        if nb.vinculo(self.p) and getattr(self.app, "_rev_pend", None) != self.p.rev:
+            self.app.calcular_pendientes_nube()
+        pend = self.app.pendientes_nube
+        self._pend_items = pend[1] if pend else set()
         self.v_sub.set((f"Estado al {core.fecha_txt(hasta)}" if estado else
                         f"Período del {core.fecha_txt(desde)} al {core.fecha_txt(hasta)}") +
-                       f" · presupuesto V{self.p.version_presupuesto}" + (" · solo lo contractual" if contr else ""))
+                       f" · presupuesto V{self.p.version_presupuesto}" + (" · solo lo contractual" if contr else "")
+                       + (f" · ⏳ {len(pend[0])} avances tuyos pendientes de aprobación (en naranja)"
+                          if pend and pend[0] else ""))
         datos = [("Acumulado anterior", fmt_pct(t["p_ant"], 2), f"{mon} {fmt(t['m_ant'])}"),
                  ("Avance financiero del día" if estado else "Avance financiero del período", fmt_pct(t["p_per"], 2), f"{mon} {fmt(t['m_per'])}"),
                  ("Acumulado total", fmt_pct(t["p_tot"], 2), f"{mon} {fmt(t['m_tot'])}"),
@@ -3747,6 +3818,9 @@ class PaginaInformes(Pagina):
                 tags.append("neg")
             if not it["vigente"]:
                 tags.append("fuera")
+            if it["id"] in self._pend_items:          # pendiente de aprobación manda sobre el verde
+                tags = [t_ for t_ in tags if t_ != "completa"] + ["pendiente"]
+                vals["descripcion"] = "⏳ " + vals["descripcion"]
             tv.insert(padre, "end", iid=it["id"], values=[vals.get(k, "") for k in keys], tags=tuple(tags))
         if not any(i in visibles for i in calc.res if calc.por_id[i]["tipo"] == "P"):
             vals = {k: "" for k in keys}
@@ -3813,6 +3887,9 @@ class PaginaInformes(Pagina):
                     "saldo": fmt(r["saldo"])}
             vals.update(cubetas(it["id"], set(r["nv_tot"]) | set(r["cont"])))
             tags = ("negrita", "completa") if core.completa(r) else ("negrita",)
+            if it["id"] in self._pend_items:
+                tags = ("negrita", "pendiente")
+                vals["descripcion"] = "⏳ " + vals["descripcion"]
             pid = tv.insert(padre, "end", iid=it["id"], values=[vals.get(k, "") for k in keys], tags=tags,
                             open=filtro != "completo")
             for g in calc.detalle_ubicaciones(it["id"]):
@@ -4980,11 +5057,561 @@ def elegir_inicio_semana(app):
     return res["ok"]
 
 
+# =========================================================================
+#  En línea (Google)
+# =========================================================================
+class DialogoAprobar(Ventana):
+    """Cambios que envió un usuario: se aceptan uno por uno o todos. Lo no elegido queda rechazado (archivado)."""
+
+    def __init__(self, app, envio, cambios):
+        super().__init__(app, "Cambios por aprobar", 1180, 720)
+        self.cambios = cambios
+        self.res = None
+        self.elegido = {c["clave"]: not c["conflicto"] for c in cambios}
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(2, weight=1)
+        etiqueta(self, f"Cambios de {envio.get('usuario') or envio.get('email')}", 22, "bold").grid(
+            row=0, column=0, sticky="w", padx=28, pady=(20, 0))
+        n_conf = sum(1 for c in cambios if c["conflicto"])
+        la = etiqueta(self, f"{envio.get('email', '')} · enviado {envio.get('fecha', '')} · sobre la versión "
+                            f"v{envio.get('version_base', '')}.  Doble clic (o Espacio) marca o desmarca. Lo que quede sin "
+                            "marcar se rechaza y queda archivado."
+                      + (f"  {n_conf} en rojo: ese dato también cambió en tu proyecto; elegí si usás el recibido."
+                         if n_conf else ""), 12, color="texto2", wraplength=1080, justify="left")
+        la.grid(row=1, column=0, sticky="w", padx=28, pady=(2, 10))
+        ui.ajustar_texto(la, self, 60, 300)
+        cols = [("ok", "", 40, "center"), ("tipo", "Cambio", 170, "w"), ("fecha", "Fecha", 100, "center"),
+                ("descripcion", "Actividad", 280, "w"), ("ubicacion", "Ubicación", 160, "w"),
+                ("valor", "Valor", 200, "w"), ("usuario", "Usuario", 170, "w")]
+        marco, self.tv = ui.tabla(self, cols, arbol=False)
+        marco.grid(row=2, column=0, sticky="nsew", padx=28)
+        self.tv.tag_configure("conflicto", foreground=col("rojo"))
+        self.tv.tag_configure("no", foreground=col("texto2"))
+        for c in cambios:
+            self.tv.insert("", "end", iid=c["clave"], values=self._vals(c), tags=self._tags(c))
+        self.tv.bind("<Double-1>", self._toggle)
+        self.tv.bind("<space>", self._toggle)
+        pie = ctk.CTkFrame(self, fg_color=C["tarjeta"], corner_radius=0)
+        pie.grid(row=3, column=0, sticky="ew", pady=(14, 0))
+        self.v_cuenta = tk.StringVar()
+        etiqueta(pie, "", 12, color="texto2", textvariable=self.v_cuenta).pack(side="left", padx=28, pady=16)
+        boton(pie, "Aplicar lo marcado", primario=True, ancho=170, command=self.aplicar).pack(side="right", padx=(8, 28),
+                                                                                             pady=16)
+        boton(pie, "Después", ancho=100, command=self.destroy).pack(side="right", pady=16)
+        boton(pie, "Quitar todo", ancho=110, command=lambda: self._todos(False)).pack(side="right", padx=8, pady=16)
+        boton(pie, "Seleccionar todo", ancho=150, command=lambda: self._todos(True)).pack(side="right", pady=16)
+        self._cuenta()
+        app.wait_window(self)
+
+    def _vals(self, c):
+        return ("✓" if self.elegido[c["clave"]] else "✗", c["tipo"], core.fecha_txt(c["fecha"]) if c["fecha"] else "",
+                c["actividad"], c["ubicacion"], c["valor"], c["usuario"])
+
+    def _tags(self, c):
+        return ("conflicto",) if c["conflicto"] else (() if self.elegido[c["clave"]] else ("no",))
+
+    def _toggle(self, ev=None):
+        iid = self.tv.identify_row(ev.y) if (ev is not None and getattr(ev, "y", None) is not None
+                                             and ev.type == tk.EventType.ButtonPress) else self.tv.focus()
+        if not iid:
+            sel = self.tv.selection()
+            iid = sel[0] if sel else None
+        if iid in self.elegido:
+            self.elegido[iid] = not self.elegido[iid]
+            c = next(x for x in self.cambios if x["clave"] == iid)
+            self.tv.item(iid, values=self._vals(c), tags=self._tags(c))
+            self._cuenta()
+        return "break"
+
+    def _todos(self, si):
+        for c in self.cambios:
+            self.elegido[c["clave"]] = si
+            self.tv.item(c["clave"], values=self._vals(c), tags=self._tags(c))
+        self._cuenta()
+
+    def _cuenta(self):
+        n = sum(1 for v in self.elegido.values() if v)
+        self.v_cuenta.set(f"{n} de {len(self.cambios)} marcados para aceptar · {len(self.cambios) - n} se rechazan")
+
+    def aplicar(self):
+        self.res = [k for k, v in self.elegido.items() if v]
+        self.destroy()
+
+
+def _pedir_clave(app, nombre, verif="", doble=False):
+    """Clave del proyecto en línea (no se guarda en ningún archivo; queda en memoria mientras Ctrl-P está abierto)."""
+    campos = [("clave", "Clave del proyecto", True, "")]
+    if doble:
+        campos.append(("clave2", "Repetir la clave", True, ""))
+
+    def validar(v):
+        c = v["clave"].strip()
+        if len(c) < 6:
+            return "La clave debe tener al menos 6 caracteres."
+        if doble and c != v["clave2"].strip():
+            return "Las dos claves no coinciden."
+        if verif and nb.clave_correcta(c, verif) is False:
+            return "La clave del proyecto no es correcta."
+        return ""
+    r = ui.dialogo_form(app, "Clave del proyecto",
+                        (f"«{nombre}». " if nombre else "")
+                        + ("Elegí la clave con la que se cifra el proyecto en línea. Pasala en persona a quien deba "
+                           "entrar; Ctrl-P no la guarda en ningún archivo." if doble else
+                           "Escribí la clave del proyecto (te la da el administrador)."),
+                        campos, ("Cancelar", "Aceptar"), validar=validar)
+    return r["clave"].strip() if r else None
+
+
+class PaginaEnLinea(Pagina):
+    clave = "enlinea"
+    titulo = "En línea"
+    subtitulo = ("Trabajá el mismo proyecto desde varias computadoras con tu cuenta de Google. Los cambios de cada "
+                 "usuario llegan al administrador y quedan pendientes hasta que los aprueba.")
+
+    def __init__(self, master, app):
+        super().__init__(master, app)
+        self.cuerpo.grid_columnconfigure(0, weight=1)
+        self.cuerpo.grid_rowconfigure(0, weight=1)
+        self.scroll = ui.Desplazable(self.cuerpo, scrollbar_button_color=C["borde"],
+                                     scrollbar_button_hover_color=C["texto2"], fg_color="transparent")
+        self.scroll.grid(row=0, column=0, sticky="nsew")
+        self.scroll.grid_columnconfigure(0, weight=1)
+        self.lista = None          # proyectos en linea (ultima consulta)
+        self.yo = None             # {"email", "admin"}
+
+    # ------------------------------------------------------------ pantalla
+    def refrescar(self):
+        for w in self.scroll.winfo_children():
+            w.destroy()
+        fila = 0
+        if not nb.configurado():
+            t = ui.Tarjeta(self.scroll)
+            t.grid(row=fila, column=0, sticky="ew", pady=(0, 14))
+            etiqueta(t, "Falta conectar Ctrl-P con Google", 16, "bold").grid(row=0, column=0, sticky="w", padx=20,
+                                                                             pady=(18, 4))
+            lb = etiqueta(t, "El administrador crea el servidor en su Google Drive (una sola vez, unos 15 minutos) "
+                             "siguiendo los pasos, y pega aquí los 3 datos que le da Google. Después Ctrl-P los trae "
+                             "ya puestos en las actualizaciones.", 12, color="texto2", justify="left", wraplength=760)
+            lb.grid(row=1, column=0, sticky="w", padx=20)
+            fb = ctk.CTkFrame(t, fg_color="transparent")
+            fb.grid(row=2, column=0, sticky="w", padx=20, pady=(12, 18))
+            boton(fb, "Ver los pasos", ancho=140, command=self.ver_pasos).pack(side="left", padx=(0, 8))
+            boton(fb, "Copiar código del servidor", ancho=210, command=self.copiar_codigo).pack(side="left", padx=(0, 8))
+            boton(fb, "Configurar…", primario=True, ancho=140, command=self.configurar).pack(side="left")
+            return
+        # cuenta
+        t = ui.Tarjeta(self.scroll)
+        t.grid(row=fila, column=0, sticky="ew", pady=(0, 14))
+        fila += 1
+        con = nb.SESION.tiene_sesion()
+        if con:
+            f = ctk.CTkFrame(t, fg_color="transparent")
+            boton(f, "Cerrar sesión", ancho=130, command=self.cerrar_sesion).pack(side="left")
+            t.fila(f"Cuenta de Google: {nb.SESION.email or '(con sesión)'}", f,
+                   "Administrador del proyecto en línea." if (self.yo or {}).get("admin") else
+                   "Con esta cuenta te reconoce el administrador.")
+        else:
+            t.fila("Cuenta de Google", boton(t, "Iniciar sesión con Google", primario=True, ancho=220,
+                                             command=self.iniciar_sesion),
+                   "Se abre el navegador para elegir tu cuenta. Ctrl-P solo conoce tu correo (nada de tu Gmail).")
+            return
+        if self.lista is None and not getattr(self, "_auto_lista", False):
+            self._auto_lista = True                     # una vez: trae la lista (y si sos administrador)
+            self.after(150, self.cargar_lista)
+        # proyecto abierto
+        if self.p is not None:
+            v = nb.vinculo(self.p)
+            t = ui.Tarjeta(self.scroll)
+            t.grid(row=fila, column=0, sticky="ew", pady=(0, 14))
+            fila += 1
+            etiqueta(t, "Proyecto abierto", 15, "bold").grid(row=0, column=0, sticky="w", padx=20, pady=(16, 2))
+            t._base = 1
+            if v:
+                rol = "administrador" if v["rol"] == "admin" else "usuario"
+                pend = self.app.pendientes_nube
+                t.fila(f"{self.p.nombre} · en línea como {rol}",
+                       boton(t, "Sincronizar ahora", primario=True, ancho=170, command=self.sincronizar),
+                       f"Versión local v{v['version']}"
+                       + (f" · {len(pend[0])} avances tuyos pendientes de aprobación" if pend and pend[0] else "")
+                       + (" · Al sincronizar: aceptás correos, revisás los cambios recibidos y subís la versión nueva."
+                          if v["rol"] == "admin" else
+                          " · Al sincronizar: se envían tus cambios y recibís lo que el administrador aprobó."))
+            elif (self.yo or {}).get("admin"):
+                t.fila(f"{self.p.nombre} · solo en esta computadora",
+                       boton(t, "Subir a Google…", primario=True, ancho=160, command=self.subir_nuevo),
+                       "Crea el proyecto en línea (cifrado con una clave que elegís) para que otros puedan trabajarlo.")
+            else:
+                t.fila(f"{self.p.nombre} · solo en esta computadora", None,
+                       "Para trabajar en línea, abrí el proyecto desde la lista de abajo.")
+        # lista
+        etiqueta(self.scroll, "Proyectos en línea", 15, "bold").grid(row=fila, column=0, sticky="w", pady=(6, 8))
+        fila += 1
+        t = ui.Tarjeta(self.scroll)
+        t.grid(row=fila, column=0, sticky="ew", pady=(0, 14))
+        fila += 1
+        if self.lista is None:
+            t.fila("Todavía no se consultó la lista.", boton(t, "Ver proyectos", ancho=140, command=self.cargar_lista))
+        elif not self.lista:
+            t.fila("No hay proyectos en línea.", boton(t, "Actualizar", ancho=110, command=self.cargar_lista),
+                   "El administrador sube el proyecto desde aquí, con el proyecto abierto.")
+        else:
+            for pr in self.lista:
+                a = pr["acceso"]
+                if a in ("admin", "aprobado"):
+                    b = boton(t, "Abrir", primario=True, ancho=110, command=lambda pr=pr: self.abrir_en_linea(pr))
+                    ayuda = (f"v{pr['version']} · actualizado {pr.get('actualizado', '')}"
+                             + (f" · {pr['accesos_pendientes']} correos por aceptar" if pr.get("accesos_pendientes") else "")
+                             + (f" · {pr['envios_pendientes']} envíos por aprobar" if pr.get("envios_pendientes") else ""))
+                elif a == "pendiente":
+                    b = etiqueta(t, "Esperando aprobación", 12, color="texto2")
+                    ayuda = "El administrador tiene que aceptar tu correo."
+                else:
+                    b = boton(t, "Pedir acceso", ancho=130, command=lambda pr=pr: self.pedir_acceso(pr))
+                    ayuda = "Rechazado: podés volver a pedirlo." if a == "rechazado" else \
+                        "Necesitás que el administrador acepte tu correo y la clave del proyecto."
+                t.fila(pr["nombre"], b, ayuda)
+            f = ctk.CTkFrame(t, fg_color="transparent")
+            boton(f, "Actualizar lista", ancho=140, command=self.cargar_lista).pack(side="left")
+            t.fila("", f)
+
+    # ------------------------------------------------------------ cuenta
+    def _recurso_servidor(self, nombre):
+        base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base, "recursos", "servidor", nombre)
+
+    def ver_pasos(self):
+        import tempfile
+        try:
+            with open(self._recurso_servidor("PASOS_GOOGLE.txt"), encoding="utf-8") as f:
+                txt = f.read()
+            ruta = os.path.join(tempfile.gettempdir(), "Ctrl-P - conectar con Google.txt")
+            with open(ruta, "w", encoding="utf-8-sig") as f:
+                f.write(txt)
+            abrir_en_sistema(ruta)
+        except OSError as e:
+            ui.info(self.app, "Pasos", f"No se encontró la guía: {e}")
+
+    def copiar_codigo(self):
+        try:
+            with open(self._recurso_servidor("Codigo.gs"), encoding="utf-8") as f:
+                txt = f.read()
+        except OSError as e:
+            ui.info(self.app, "Código del servidor", f"No se encontró: {e}")
+            return
+        self.app.clipboard_clear()
+        self.app.clipboard_append(txt)
+        ui.info(self.app, "Código del servidor", "Copiado. Pegalo en el Apps Script (Ctrl+V) y poné tu Gmail en "
+                                                  "ADMIN_EMAIL (ver los pasos).")
+
+    def configurar(self):
+        cfg = core.leer_config()
+        r = ui.dialogo_form(self.app, "Conectar con Google",
+                            "Los 3 datos que te dio Google al crear el servidor (ver LEEME_GOOGLE.txt).",
+                            [("url", "URL de la aplicación web (Apps Script)", False, cfg.get("nube_url", "")),
+                             ("cliente", "ID de cliente (OAuth)", False, cfg.get("nube_cliente", "")),
+                             ("secreto", "Secreto del cliente", False, cfg.get("nube_secreto", ""))],
+                            ("Cancelar", "Guardar"),
+                            validar=lambda v: "" if v["url"].strip().startswith("https://script.google.com/")
+                            else "La URL debe empezar con https://script.google.com/")
+        if r:
+            self.app.cfg = core.config_poner(nube_url=r["url"].strip(), nube_cliente=r["cliente"].strip(),
+                                             nube_secreto=r["secreto"].strip())
+            self.refrescar()
+
+    def iniciar_sesion(self):
+        try:
+            self.app.en_fondo("Iniciar sesión con Google",
+                              "Se abrió el navegador: elegí tu cuenta de Google y aceptá. Después volvé aquí.",
+                              nb.SESION.iniciar_sesion, cancelar=nb.SESION.cancelar)
+        except nb.ErrorNube as e:
+            ui.info(self.app, "Google", str(e))
+            return
+        except Exception as e:
+            ui.info(self.app, "Google", f"No se pudo iniciar sesión: {e}")
+            return
+        self.cargar_lista()
+
+    def cerrar_sesion(self):
+        if ui.preguntar(self.app, "Cerrar sesión", "¿Cerrar la sesión de Google en esta computadora?", si="Cerrar sesión"):
+            nb.SESION.cerrar_sesion()
+            self.lista, self.yo = None, None
+            self.refrescar()
+
+    def _red(self, texto, fn):
+        """Llamada a Google en segundo plano; muestra el error y devuelve None si falla."""
+        try:
+            return self.app.en_fondo("En línea", texto, fn)
+        except nb.NecesitaSesion as e:
+            ui.info(self.app, "Google", str(e))
+            self.refrescar()
+        except nb.ErrorNube as e:
+            ui.info(self.app, "En línea", str(e))
+        return None
+
+    def cargar_lista(self):
+        r = self._red("Consultando los proyectos en línea…", lambda: nb.llamar("proyectos"))
+        if r is not None:
+            self.lista = r["proyectos"]
+            self.yo = {"email": r["email"], "admin": r["admin"]}
+            nb.SESION.email = r["email"]
+        self.refrescar()
+
+    def pedir_acceso(self, pr):
+        r = self._red("Pidiendo acceso…", lambda: nb.llamar("pedir_acceso", proyecto=pr["id"],
+                                                             usuario=self.app.usuario or ""))
+        if r is not None:
+            ui.info(self.app, "Acceso pedido", "Listo. Cuando el administrador acepte tu correo, el proyecto se podrá "
+                                               "abrir desde esta lista (pedile también la clave del proyecto).")
+            self.cargar_lista()
+
+    # ------------------------------------------------------------ clave
+    def clave_proyecto(self, pid, nombre, verif=""):
+        c = self.app.claves_nube.get(pid)
+        if c:
+            return c
+        c = _pedir_clave(self.app, nombre, verif)
+        if c:
+            self.app.claves_nube[pid] = c
+        return c
+
+    # ------------------------------------------------------------ administrador: subir por primera vez
+    def subir_nuevo(self):
+        p = self.p
+        c = _pedir_clave(self.app, p.nombre, doble=True)
+        if not c:
+            return
+        datos = nb.bytes_proyecto(p)
+        nombre = p.nombre                         # (el proyecto no se toca desde el hilo de internet)
+        r = self._red("Subiendo el proyecto cifrado a Google…",
+                      lambda: nb.llamar("subir", nombre=nombre, datos=nb.b64(nb.cifrar(datos, c)),
+                                        verificador=nb.verificador(c), timeout=180))
+        if r is None:
+            return
+        nb.vincular(p, r["proyecto"], r["version"], "admin", p.nombre)
+        p.set_meta("nube_subido_huella", nb.huella_archivo(p))
+        self.app.claves_nube[r["proyecto"]] = c
+        self.app.guardar()
+        ui.info(self.app, "Proyecto en línea", "Listo: el proyecto quedó en tu Google Drive, cifrado. Ahora los usuarios "
+                                               "pueden pedir acceso desde «En línea»; vos aceptás sus correos al "
+                                               "sincronizar y les pasás la clave en persona.")
+        self.cargar_lista()
+
+    # ------------------------------------------------------------ abrir desde la lista
+    def abrir_en_linea(self, pr):
+        if self.p is not None and nb.vinculo(self.p) and nb.vinculo(self.p)["proyecto"] == pr["id"]:
+            ui.info(self.app, "En línea", "Ese proyecto ya está abierto. Usá «Sincronizar ahora».")
+            return
+        c = self.clave_proyecto(pr["id"], pr["nombre"], pr.get("verificador", ""))
+        if not c:
+            return
+        rol = "admin" if pr["acceso"] == "admin" else "usuario"
+        nombre = "".join(ch for ch in pr["nombre"] if ch not in '\\/:*?"<>|').strip() or "Proyecto"
+        ruta = os.path.join(nb.carpeta_en_linea(), f"{nombre}{core.EXT}")
+        if os.path.isfile(ruta):
+            try:
+                tmp = core.Proyecto(ruta, self.app.usuario)
+                ya = nb.vinculo(tmp)
+                tmp.cerrar()
+            except Exception:
+                ya = None
+            if ya and ya["proyecto"] == pr["id"]:
+                self.app.abrir_proyecto(ruta)          # ya lo tenías: se abre (y se sincroniza desde aquí)
+                return
+            ruta = os.path.join(nb.carpeta_en_linea(), f"{nombre} ({pr['id'][:6]}){core.EXT}")
+        r = self._red("Bajando el proyecto…", lambda: nb.llamar("bajar", proyecto=pr["id"], timeout=180))
+        if r is None:
+            return
+        try:
+            datos = nb.descifrar(nb.de_b64(r["datos"]), c)
+        except nb.ClaveIncorrecta as e:
+            self.app.claves_nube.pop(pr["id"], None)
+            ui.info(self.app, "Clave", str(e))
+            return
+        with open(ruta, "wb") as f:
+            f.write(datos)
+        if rol == "usuario":
+            with open(nb.ruta_base(pr["id"]), "wb") as f:
+                f.write(datos)
+        tmp = core.Proyecto(ruta, self.app.usuario)
+        nb.vincular(tmp, pr["id"], r["version"], rol, pr["nombre"])
+        tmp.guardar()
+        tmp.cerrar()
+        self.app.abrir_proyecto(ruta)
+
+    # ------------------------------------------------------------ sincronizar
+    def sincronizar(self):
+        p = self.p
+        v = nb.vinculo(p) if p else None
+        if not v:
+            return
+        lst = self._red("Consultando el proyecto en línea…", lambda: nb.llamar("proyectos"))
+        if lst is None:
+            return
+        pr = next((x for x in lst["proyectos"] if x["id"] == v["proyecto"]), None)
+        if pr is None:
+            ui.info(self.app, "En línea", "Este proyecto ya no está en línea.")
+            return
+        if pr["acceso"] not in ("admin", "aprobado"):
+            ui.info(self.app, "En línea", "Tu correo no tiene acceso aprobado a este proyecto.")
+            return
+        c = self.clave_proyecto(v["proyecto"], v["nombre"] or p.nombre, pr.get("verificador", ""))
+        if not c:
+            return
+        if v["rol"] == "admin":
+            self._sinc_admin(p, v, pr, c)
+        else:
+            self._sinc_usuario(p, v, pr, c)
+        self.cargar_lista()
+
+    def _sinc_admin(self, p, v, pr, c):
+        pid = v["proyecto"]
+        # 1) correos que piden acceso
+        if pr.get("accesos_pendientes"):
+            acc = self._red("Consultando accesos…", lambda: nb.llamar("accesos", proyecto=pid))
+            for a in (acc or {}).get("accesos", []):
+                if a["estado"] != "pendiente":
+                    continue
+                r = ui.dialogo_texto(self.app, "Pide acceso", f"{a['email']}" + (f" ({a['usuario']})" if a.get("usuario")
+                                                                                 else "")
+                                     + f" pide acceso a «{p.nombre}» desde el {a.get('fecha', '')}.",
+                                     ("Después", "Rechazar", "Aceptar"), 2)
+                if r in (1, 2):
+                    self._red("Guardando…", lambda a=a, r=r: nb.llamar("resolver_acceso", proyecto=pid, email=a["email"],
+                                                                         aprobar=(r == 2)))
+        # 2) cambios enviados
+        resueltos = []
+        env = self._red("Consultando cambios enviados…", lambda: nb.llamar("envios", proyecto=pid))
+        for e in (env or {}).get("envios", []):
+            dat = self._red(f"Bajando los cambios de {e.get('usuario') or e['email']}…", lambda e=e: (
+                nb.llamar("envio_datos", proyecto=pid, envio=e["id"], timeout=180),
+                nb.llamar("bajar", proyecto=pid, version=e["version_base"], timeout=180)))
+            if dat is None:
+                return
+            try:
+                envio_b = nb.descifrar(nb.de_b64(dat[0]["datos"]), c)
+                base_b = nb.descifrar(nb.de_b64(dat[1]["datos"]), c)
+            except nb.ClaveIncorrecta as ex:
+                ui.info(self.app, "Clave", str(ex))
+                return
+            imp = nb.cambios_de(base_b, envio_b, self.app.usuario)
+            lista = nb.lista_cambios(p, imp, e.get("usuario", ""))
+            if not lista:
+                resueltos.append((e, "aceptado", {"aceptados": 0, "rechazados": []}))
+                continue
+            dlg = DialogoAprobar(self.app, e, lista)
+            if dlg.res is None:
+                continue                                  # «Después»: queda pendiente
+            n = nb.aplicar_seleccion(p, imp, dlg.res)
+            rech = [c_ for c_ in lista if c_["clave"] not in set(dlg.res)]
+            textos = [f"{x['tipo']}: {x['actividad']} · {x['ubicacion']} · {x['valor']}"
+                      + (f" ({core.fecha_txt(x['fecha'])})" if x["fecha"] else "") for x in rech]
+            for t_ in textos:
+                p.registrar("Cambio en línea rechazado", "", "", e.get("usuario") or e["email"], t_)
+            p.registrar("Cambios en línea aprobados", "", "", e.get("usuario") or e["email"],
+                        f"{n} aceptados, {len(rech)} rechazados")
+            resueltos.append((e, "aceptado" if not rech else ("rechazado" if not dlg.res else "parcial"),
+                              {"aceptados": len(dlg.res), "rechazados": textos[:200]}))
+        # 3) subir la version nueva (si cambió algo)
+        huella = nb.huella_archivo(p)
+        if resueltos or huella != p.get_meta("nube_subido_huella", ""):
+            datos = nb.bytes_proyecto(p)
+            r = self._red("Subiendo la versión nueva…", lambda: nb.llamar(
+                "subir", proyecto=pid, version_base=v["version"], datos=nb.b64(nb.cifrar(datos, c)), timeout=180))
+            if r is None:
+                return
+            nb.vincular(p, pid, r["version"], "admin", v["nombre"] or p.nombre)
+            p.set_meta("nube_subido_huella", huella)
+            self.app.guardar()
+            for e, est, res in resueltos:
+                self._red("Avisando a los usuarios…", lambda e=e, est=est, res=res: nb.llamar(
+                    "resolver_envio", proyecto=pid, envio=e["id"], estado=est, version=r["version"], resultado=res))
+            self.app.proyecto_cargado()
+            ui.info(self.app, "Sincronizado", f"Versión en línea: v{r['version']}."
+                    + (f"\n{len(resueltos)} envío(s) resuelto(s); cada usuario verá qué se aceptó y qué no."
+                       if resueltos else ""))
+        else:
+            ui.info(self.app, "Sincronizado", "No había cambios: la versión en línea ya es la tuya.")
+
+    def _sinc_usuario(self, p, v, pr, c):
+        pid = v["proyecto"]
+        base_ruta = nb.ruta_base(pid)
+        if not os.path.isfile(base_ruta):
+            ui.info(self.app, "En línea", "Falta la copia base de este proyecto en esta computadora. Abrilo de nuevo "
+                                          "desde la lista de «Proyectos en línea».")
+            return
+        me = self._red("Consultando tus envíos…", lambda: nb.llamar("mis_envios", proyecto=pid, marcar_vistos=True))
+        if me is None:
+            return
+        avisos = me.get("avisos", [])
+        pendiente_srv = any(x["estado"] == "pendiente" for x in me.get("envios", []))
+        mensajes = []
+        # 1) traer lo aprobado (si no espera respuesta de un envio)
+        if pr["version"] > v["version"] and not pendiente_srv:
+            r = self._red("Bajando la versión nueva…", lambda: nb.llamar("bajar", proyecto=pid, timeout=180))
+            if r is None:
+                return
+            nuevo = nb.descifrar(nb.de_b64(r["datos"]), c)
+            with open(base_ruta, "rb") as f:
+                base_vieja = f.read()
+            datos = nb.rebasar(p, base_vieja, nuevo, v["enviado_en"])
+            ruta = p.ruta
+            p.sucio = False
+            self.app.cerrar_proyecto()
+            with open(ruta, "wb") as f:
+                f.write(datos)
+            with open(base_ruta, "wb") as f:
+                f.write(nuevo)
+            tmp = core.Proyecto(ruta, self.app.usuario)
+            nb.vincular(tmp, pid, r["version"], "usuario", v["nombre"])
+            tmp.set_meta("nube_enviado_huella", "")
+            tmp.guardar()
+            tmp.cerrar()
+            self.app.abrir_proyecto(ruta)
+            p = self.app.p
+            if p is None:
+                return
+            v = nb.vinculo(p)
+            mensajes.append(f"Recibiste la versión v{r['version']} con lo que aprobó el administrador.")
+        # 2) enviar lo propio
+        with open(base_ruta, "rb") as f:
+            base = f.read()
+        ids, imp = nb.pendientes_ids(p, base)
+        self.app.pendientes_nube = (ids, {r_["item"] for r_ in imp["nuevos"]} | {r_["item"] for _l, r_ in imp["modificados"]})
+        if nb.hay_cambios(imp):
+            huella = nb.huella_cambios(imp)
+            if huella != v["enviado_huella"] or not pendiente_srv:
+                datos = nb.bytes_proyecto(p)
+                rr = self._red("Enviando tus cambios…", lambda: nb.llamar(
+                    "enviar", proyecto=pid, version_base=v["version"], usuario=self.app.usuario or "",
+                    resumen=nb.resumen(imp), datos=nb.b64(nb.cifrar(datos, c)), timeout=180))
+                if rr is None:
+                    return
+                p.set_meta("nube_enviado_en", core.ahora())
+                p.set_meta("nube_enviado_huella", huella)
+                self.app.guardar()
+                rs = nb.resumen(imp)
+                mensajes.append(f"Se enviaron tus cambios ({rs['avances']} avances nuevos, {rs['modificados']} "
+                                f"modificados, {rs['contractual']} contractuales, {rs['marcas']} marcas). Quedan "
+                                "pendientes de aprobación.")
+            else:
+                mensajes.append("Tus cambios ya se habían enviado: siguen pendientes de aprobación.")
+        elif pendiente_srv:
+            mensajes.append("Tu envío anterior todavía espera la aprobación del administrador.")
+        for a in avisos:
+            res = a.get("resultado") or {}
+            rech = res.get("rechazados") or []
+            mensajes.append(f"Envío del {a.get('fecha', '')}: {res.get('aceptados', 0)} aceptados"
+                            + (f", {len(rech)} rechazados:\n" + "\n".join("   • " + x for x in rech[:15])
+                               + ("\n   …" if len(rech) > 15 else "") if rech else "."))
+        self.app.proyecto_cargado()
+        ui.info(self.app, "Sincronizado", "\n\n".join(mensajes) if mensajes else "Todo al día.")
+
+
 class DialogoProgreso(ctk.CTkToplevel):
     """Ventanita «Exportando…» con barra. El trabajo corre en la ventana principal y llama a avanzar();
     el guardado del archivo va en segundo plano. Asi Windows nunca marca el programa como «No responde»."""
 
-    def __init__(self, app, titulo, texto):
+    def __init__(self, app, titulo, texto, cancelar=None):
         super().__init__(app, fg_color=C["fondo"])
         self.app = app
         self.title(titulo)
@@ -4996,8 +5623,11 @@ class DialogoProgreso(ctk.CTkToplevel):
         caja.pack(padx=28, pady=22)
         self.l = etiqueta(caja, texto, 13)
         self.l.pack(anchor="w")
+        self.l.configure(wraplength=380, justify="left")
         self.barra = ctk.CTkProgressBar(caja, width=380, progress_color=C["acento"])
         self.barra.pack(pady=(12, 0))
+        if cancelar:
+            boton(caja, "Cancelar", ancho=110, command=cancelar).pack(anchor="e", pady=(14, 0))
         self.barra.set(0)
         self._t = 0.0
         self.update_idletasks()
@@ -6299,7 +6929,7 @@ def autoprueba(app, ruta, log):
     def abrir():
         app.abrir_proyecto(ruta)
 
-    for clave in ("proyecto", "presupuesto", "ubicaciones", "datos", "registro", "planos", "apariencia"):
+    for clave in ("proyecto", "presupuesto", "ubicaciones", "datos", "registro", "planos", "enlinea", "apariencia"):
         paso(lambda c=clave: app.ir(c))
 
     @paso

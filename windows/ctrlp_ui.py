@@ -1112,6 +1112,7 @@ def etiquetas_tabla(tv):
     tv.tag_configure("marca", foreground=col("texto2"))
     tv.tag_configure("negrita", font=TF(10, "bold"))
     tv.tag_configure("completa", foreground=col("verde"))
+    tv.tag_configure("pendiente", foreground="#EA580C")         # en linea: pendiente de aprobacion
 
 
 def dialogo_texto(raiz, titulo, mensaje, botones=("Aceptar",), primario=0):

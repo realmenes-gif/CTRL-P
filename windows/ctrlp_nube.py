@@ -383,6 +383,23 @@ def ruta_base(proyecto_id):
     return os.path.join(c, f"{proyecto_id}.ctrlp")
 
 
+TABLAS_HUELLA = ("items", "edificios", "niveles", "contractual", "tipo_cant", "avances", "detalle", "equipos", "hitos",
+                 "tramos", "marcas", "hojas", "plano_ubic")
+
+
+def huella_archivo(p):
+    """Huella del contenido del proyecto (sin fechas de guardado): para saber si cambio algo desde la ultima subida."""
+    h = hashlib.sha256()
+    for t in TABLAS_HUELLA:
+        try:
+            for r in p.con.execute(f"SELECT * FROM {t} ORDER BY 1"):
+                h.update(repr(tuple(r)).encode("utf-8"))
+        except Exception:
+            pass
+    h.update(repr(sorted((r[0], r[1]) for r in p.con.execute("SELECT id, nombre FROM planos"))).encode("utf-8"))
+    return h.hexdigest()[:24]
+
+
 def bytes_proyecto(p):
     """El archivo .ctrlp tal como esta ahora (guardado)."""
     p.guardar()
