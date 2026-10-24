@@ -12,7 +12,7 @@ C = {
     "suave_h": ("#DCE3EC", "#353D48"), "campo": ("#F4F6F9", "#1D2228"), "campo_borde": ("#D3DBE5", "#3A4350"),
     "titulo0": ("#DCE3EC", "#2E3642"), "titulo": ("#EEF2F7", "#272E37"), "subtotal": ("#F4F6F9", "#252B33"),
     "rojo": ("#B42318", "#F97066"), "punto": ("#8A96A6", "#7D8896"), "sel": ("#D7E3F4", "#34465F"),
-    "marca": ("#4C6F9F", "#7096C8"), "verde": ("#067647", "#47CD89"),
+    "marca": ("#4C6F9F", "#7096C8"), "verde": ("#067647", "#47CD89"), "naranja": ("#EA580C", "#FB923C"),
 }
 ICONOS = [  # clave, titulo, color, grupo
     ("proyecto", "Proyecto", "#3B82F6", 0),
@@ -22,6 +22,7 @@ ICONOS = [  # clave, titulo, color, grupo
     ("registro", "Registro de avance", "#10B981", 2),
     ("planos", "Planos", "#0EA5E9", 2),
     ("informes", "Informes de avance", "#EC4899", 2),
+    ("enlinea", "En línea", "#2563EB", 3),
     ("apariencia", "Apariencia", "#64748B", 3),
 ]
 
@@ -122,6 +123,17 @@ def icono(clave, color, tam=28, escala=4):
         L([(4.5, 12), (11, 12), (11, 18)], max(1, lw - 1))
         L([(11, 9), (15, 9)], max(1, lw - 1))
         L([(15, 6), (15, 12), (19.5, 12)], max(1, lw - 1))
+    elif clave == "enlinea":          # nube con flechas de subir y bajar
+        d.ellipse([4 * s, 9.5 * s, 11 * s, 16.5 * s], fill=w)
+        d.ellipse([8 * s, 6 * s, 16.5 * s, 14.5 * s], fill=w)
+        d.ellipse([13 * s, 9 * s, 20 * s, 16 * s], fill=w)
+        d.rectangle([7.5 * s, 12 * s, 16.5 * s, 16.5 * s], fill=w)
+        az = _hex(color) + (255,)
+        lw2 = max(1, int(1.4 * s))
+        d.line([(10.2 * s, 15.5 * s), (10.2 * s, 10.5 * s)], fill=az, width=lw2)
+        d.polygon([(8.4 * s, 12 * s), (12 * s, 12 * s), (10.2 * s, 9.6 * s)], fill=az)
+        d.line([(13.8 * s, 10 * s), (13.8 * s, 15 * s)], fill=az, width=lw2)
+        d.polygon([(12 * s, 13.5 * s), (15.6 * s, 13.5 * s), (13.8 * s, 15.9 * s)], fill=az)
     elif clave == "apariencia":
         d.ellipse([5 * s, 5 * s, 19 * s, 19 * s], outline=w, width=lw)
         d.pieslice([5 * s, 5 * s, 19 * s, 19 * s], 90, 270, fill=w)

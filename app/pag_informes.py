@@ -124,6 +124,7 @@ class PaginaInformes(Pagina):
 
     def __init__(self, app, **kw):
         super().__init__(app, **kw)
+        self._pend_items = set()
         hoy = core.hoy_iso()
         dh = core.iso_a_fecha(hoy)
         lunes = (dh - dt.timedelta(days=(dh.weekday() - core.INICIO_SEMANA) % 7)).isoformat()   # inicio de semana
@@ -345,9 +346,16 @@ class PaginaInformes(Pagina):
         t = calc.totales()
         mon = self.p.get_meta("moneda", "US$")
         estado = modo == "estado"
+        # en linea: lo de este usuario que el administrador todavia no aprobo va en naranja con ⏳
+        if getattr(self.app, "_rev_pend", None) != self.p.rev:
+            self.app.calcular_pendientes_nube()
+        pend = self.app.pendientes_nube
+        self._pend_items = pend[1] if pend else set()
         self.poner_sub((f"Estado al {core.fecha_txt(hasta)}" if estado else
                         f"Período del {core.fecha_txt(desde)} al {core.fecha_txt(hasta)}") +
-                       f" · presupuesto V{self.p.version_presupuesto}" + (" · solo lo contractual" if contr else ""))
+                       f" · presupuesto V{self.p.version_presupuesto}" + (" · solo lo contractual" if contr else "")
+                       + (f" · ⏳ {len(pend[0])} avances tuyos pendientes de aprobación (en naranja)"
+                          if pend and pend[0] else ""))
         datos = [("Acumulado anterior", fmt_pct(t["p_ant"], 2), f"{mon} {fmt(t['m_ant'])}"),
                  ("Avance financiero del día" if estado else "Avance financiero del período", fmt_pct(t["p_per"], 2),
                   f"{mon} {fmt(t['m_per'])}"),
@@ -446,10 +454,13 @@ class PaginaInformes(Pagina):
             for k in range(len(cortes)):
                 vals[f"b{k}"] = fmt(sum(ex_b[k].get(it["id"], {}).values()))
             hay_hijos[it["padre"]] = True
+            est = "verde" if core.completa(r) else ("rojo" if r["saldo"] < -1e-9 else
+                                                    ("fuera" if not it["vigente"] else ""))
+            if it["id"] in self._pend_items:                 # pendiente de aprobacion manda sobre el verde
+                est = "pendiente"
+                vals["descripcion"] = "⏳ " + vals["descripcion"]
             filas.append({"id": it["id"], "padre": it["padre"] or "", "nivel": nivel.get(it["padre"], -1) + 1,
-                          "vals": [vals.get(k, "") for k in keys], "abierto": None,
-                          "estilo": "verde" if core.completa(r) else ("rojo" if r["saldo"] < -1e-9 else
-                                                                      ("fuera" if not it["vigente"] else ""))})
+                          "vals": [vals.get(k, "") for k in keys], "abierto": None, "estilo": est})
         tit_con_hijos = set()
         for f in filas:
             if f.get("padre"):
@@ -533,8 +544,12 @@ class PaginaInformes(Pagina):
                     hijos.append({"id": f"{pid}|T{g['edificio']}", "padre": pid, "nivel": 1,
                                   "vals": [v4.get(k, "") for k in keys], "abierto": None,
                                   "estilo": "rojo" if g["saldo"] is not None and g["saldo"] < -1e-9 else "subtotal"})
+            est = "titulo_verde" if core.completa(r) else "titulo"
+            if it["id"] in self._pend_items:
+                est = "titulo_pendiente"
+                vals["descripcion"] = "⏳ " + vals["descripcion"]
             filas.append({"id": pid, "padre": "", "nivel": 0, "vals": [vals.get(k, "") for k in keys],
-                          "estilo": "titulo_verde" if core.completa(r) else "titulo", "abierto": True if hijos else None})
+                          "estilo": est, "abierto": True if hijos else None})
             filas += hijos
         if not n:
             filas.append({"id": None, "nivel": 0, "abierto": None,

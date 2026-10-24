@@ -29,7 +29,7 @@ import dibujos
 import ui_k as ui
 from ui_k import (Boton, Campo, Columna, Desplazable, Espacio, Etiqueta, Fila, Tarjeta, fmt, rgba)
 
-VERSION = "v1.1"
+VERSION = "v1.2"
 NOMBRE_MASTER = "Registro_Semanal"
 NOMBRE_ACTUALIZACION = "actualizacion_semanal"
 PAGINAS_MANUALES = ("proyecto", "presupuesto", "ubicaciones", "informes")
@@ -190,7 +190,7 @@ class Lateral(BoxLayout):
             if grupo != grupo_ant:
                 self.add_widget(ui.Separador())
                 grupo_ant = grupo
-            activo = p is not None or clave in ("proyecto", "apariencia")
+            activo = p is not None or clave in ("proyecto", "apariencia", "enlinea")
             it = ItemLateral(clave, titulo, color, activo, clave == app.pagina, comp,
                              extra=(f"● {pend}" if clave == "datos" and pend else ""))
             it.bind(on_release=lambda w: app.clic_pagina(w.clave))
@@ -386,6 +386,9 @@ class CtrlPApp(App):
         self.pagina = None
         self.paginas = {}
         self.pila_deshacer = []
+        self.claves_nube = {}           # claves de proyectos en linea: solo en memoria, nunca en archivos
+        self.pendientes_nube = None
+        self._rev_pend = None
         self.lat_compacto = False
         self._aplicar_tema()
         self.raiz = FloatLayout()
@@ -490,7 +493,7 @@ class CtrlPApp(App):
 
     # ------------------------------------------------------------ navegacion
     def clic_pagina(self, clave):
-        if self.p is None and clave not in ("proyecto", "apariencia"):
+        if self.p is None and clave not in ("proyecto", "apariencia", "enlinea"):
             ui.aviso("Primero abrí o creá un proyecto.")
             return
         self.ir(clave)
@@ -665,12 +668,32 @@ class CtrlPApp(App):
             return
         self._proyecto_listo(p)
 
+    def calcular_pendientes_nube(self):
+        """Usuario en linea: sus avances todavia sin aprobar (se marcan en naranja en Informes)."""
+        self.pendientes_nube = None
+        self._rev_pend = self.p.rev if self.p is not None else None
+        try:
+            import ctrlp_nube as nb
+            v = nb.vinculo(self.p) if self.p is not None else None
+            if not v:
+                return
+            base = nb.ruta_base(v["proyecto"])
+            if not os.path.isfile(base):
+                return
+            with open(base, "rb") as f:
+                b = f.read()
+            ids, imp = nb.pendientes_ids(self.p, b)
+            self.pendientes_nube = (ids, {r["item"] for r in imp["nuevos"]} | {r["item"] for _l, r in imp["modificados"]})
+        except Exception:
+            registrar_error("Pendientes en línea", traceback.format_exc())
+
     def _proyecto_listo(self, p):
         self.p = p
         try:
             self.p.sincronizar_usuarios()
         except Exception:
             pass
+        self.calcular_pendientes_nube()
         for pg in self.paginas.values():
             if hasattr(pg, "al_cambiar_proyecto"):
                 pg.al_cambiar_proyecto()
@@ -693,6 +716,7 @@ class CtrlPApp(App):
                 self.guardar()
             self.p.cerrar()
             self.p = None
+            self.pendientes_nube = None
             self.pila_deshacer = []
             for pg2 in self.paginas.values():
                 if hasattr(pg2, "al_cambiar_proyecto"):

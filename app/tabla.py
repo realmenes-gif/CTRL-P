@@ -28,6 +28,8 @@ ESTILOS = {
     "rojo": ("tarjeta", False, "rojo"),
     "verde": ("tarjeta", False, "verde"),          # al 100 % (o mas) de lo contractual
     "titulo_verde": ("titulo", True, "verde"),
+    "pendiente": ("tarjeta", False, "naranja"),     # en linea: sin aprobar
+    "titulo_pendiente": ("titulo", True, "naranja"),
 }
 
 

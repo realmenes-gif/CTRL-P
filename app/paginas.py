@@ -614,5 +614,6 @@ def clases():
     from pag_registro import PaginaRegistro
     from pag_informes import PaginaInformes
     from pag_planos import PaginaPlanos
+    from pag_enlinea import PaginaEnLinea
     return [PaginaProyecto, PaginaPresupuesto, PaginaUbicaciones, PaginaDatosFijos, PaginaRegistro, PaginaPlanos,
-            PaginaInformes, PaginaApariencia]
+            PaginaInformes, PaginaEnLinea, PaginaApariencia]
