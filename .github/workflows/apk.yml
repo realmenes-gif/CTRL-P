@@ -95,7 +95,7 @@ jobs:
 
       - name: Publicar APK en la rama apk
         run: |
-          mkdir -p /tmp/apk && cp bin/*.apk /tmp/apk/
+          mkdir -p /tmp/apk && cp bin/*.apk /tmp/apk/ && cp app/novedades.py /tmp/novedades.py
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git checkout --orphan apk-tmp
@@ -103,7 +103,18 @@ jobs:
           find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .buildozer ! -name bin -exec rm -rf {} +
           cp /tmp/apk/*.apk .
           echo "run ${{ github.run_id }}" > ejecucion.txt
-          git add -f *.apk ejecucion.txt
+          # version.json: lo consulta la app para actualizarse sola
+          python3 - <<'PY'
+          import glob, hashlib, json, os, runpy
+          apk = sorted(glob.glob("*.apk"))[-1]
+          nov = runpy.run_path("/tmp/novedades.py")
+          json.dump({"version": nov["VERSION_INTERNA"], "apk": apk,
+                     "sha256": hashlib.sha256(open(apk, "rb").read()).hexdigest(),
+                     "tamano": os.path.getsize(apk), "novedades": nov["CAMBIOS"][0][1]},
+                    open("version.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+          print(open("version.json", encoding="utf-8").read())
+          PY
+          git add -f *.apk ejecucion.txt version.json
           git commit -m "APK de la ejecucion ${{ github.run_id }}"
           git push -f origin HEAD:apk
 

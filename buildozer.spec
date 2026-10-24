@@ -5,14 +5,15 @@ package.domain = com.consorciohospitaltocoa
 source.dir = app
 source.include_exts = py,png,jpg,ttf,txt,json
 source.exclude_dirs = __pycache__
-version = 1.2.1
+version.regex = VERSION_INTERNA = ['"](.*)['"]
+version.filename = %(source.dir)s/novedades.py
 requirements = python3,kivy==2.3.1,pillow,openpyxl,et_xmlfile,sqlite3,openssl,pyjnius,android,certifi
 orientation = landscape, landscape-reverse
 fullscreen = 0
 icon.filename = recursos/icono.png
 presplash.filename = recursos/presplash.png
 android.presplash_color = #EEF2F7
-android.permissions = INTERNET, MANAGE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
+android.permissions = INTERNET, REQUEST_INSTALL_PACKAGES, MANAGE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
 android.api = 34
 android.minapi = 30
 android.ndk = 28c

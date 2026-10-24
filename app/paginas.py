@@ -597,6 +597,20 @@ class PaginaApariencia(Pagina):
         if self.app.cfg.get("carpeta_docs"):
             t.fila("Volver a la carpeta por defecto", Boton("Documentos/CTRL-P DOC", ancho=240, al_tocar=self.por_defecto))
         col.add_widget(t)
+        import novedades
+        t = Tarjeta()
+        t.add_widget(Etiqueta("Actualizaciones", 16, True))
+        t.fila(f"Ctrl-P {novedades.VERSION_INTERNA}",
+               Boton("Buscar actualizaciones", primario=True, ancho=240,
+                     al_tocar=lambda: self.app.buscar_actualizacion(silencioso=False)),
+               "Al abrir, Ctrl-P revisa solo si hay una versión nueva. Los proyectos y la sesión de Google se "
+               "mantienen al actualizar.")
+        t.fila("Novedades", Boton("Ver novedades", ancho=180, al_tocar=self.ver_novedades))
+        col.add_widget(t)
+
+    def ver_novedades(self):
+        import novedades
+        ui.info("Novedades", "\n\n".join(f"{v}\n" + "\n".join("• " + c for c in cs) for v, cs in novedades.CAMBIOS))
 
     def cambiar_carpeta(self):
         def elegida(r):
