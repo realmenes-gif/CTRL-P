@@ -6146,6 +6146,34 @@ def autoprueba(app, ruta, log):
                             pg.generar()
 
     @paso
+    def barra_horizontal():
+        # como en Informes: una semana cortada en dos, «+ Por semana», con avance y solo lo contractual;
+        # se toca y arrastra la barra de desplazamiento horizontal (no debe quedar «No responde»)
+        pg = app.paginas["informes"]
+        pg.v_modo.set("Período")
+        pg._modo()
+        for det in ("+ Por semana", "+ Por día", "Sumatoria"):
+            for filtro, contr in (("Con avance", True), ("Presupuesto completo", False)):
+                pg.v_desde.set("04/06/2026")
+                pg.v_hasta.set("10/06/2026")
+                pg.v_det.set(det)
+                pg.v_filtro.set(filtro)
+                pg.v_contr.set(contr)
+                pg.generar()
+                app.update()
+                barras = [w for w in pg.marco.winfo_children()
+                          if isinstance(w, ctk.CTkScrollbar) and getattr(w, "_orientation", "") == "horizontal"]
+                for b in barras:
+                    c = b._canvas
+                    w_, h_ = max(4, c.winfo_width()), max(4, c.winfo_height())
+                    for x in (w_ // 2, 2, w_ - 2):
+                        c.event_generate("<Button-1>", x=x, y=h_ // 2)
+                        for k in range(8):
+                            c.event_generate("<B1-Motion>", x=min(w_ - 1, x + k * 6), y=h_ // 2)
+                        c.event_generate("<ButtonRelease-1>", x=x, y=h_ // 2)
+                        app.update()
+
+    @paso
     def exportar():
         import tempfile
         d = tempfile.mkdtemp()
