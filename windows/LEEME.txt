@@ -1,0 +1,178 @@
+Ctrl-P v1.1 · Control de avance detallado de obra
+==================================================
+
+CREAR EL PROGRAMA PORTABLE (una sola vez, igual que PdFOL)
+1. Descomprimí este .zip COMPLETO en una carpeta (con la carpeta "fuentes").
+2. Necesitás Python 64 bits instalado (python.org), con "Add python.exe to PATH"
+   y "tcl/tk and IDLE" marcados.
+3. Doble clic en  crear_portable.bat  y esperá (2 a 5 minutos).
+4. Se crea la carpeta  Ctrl-P_portable  con  Ctrl-P.exe  adentro.
+   Esa carpeta se puede copiar completa a una USB u otra PC con Windows 10/11;
+   ahí ya no hace falta Python.
+
+ACTUALIZACIONES (desde la v1.1, igual que PdFOL)
+- La forma más fácil de tener Ctrl-P es bajar  Ctrl-P_portable.zip  de
+  https://github.com/realmenes-gif/CTRL-P/releases  (no hace falta Python).
+- Al abrir, si hay internet, Ctrl-P revisa si hay una versión nueva y la avisa
+  arriba: «Ver cambios», «Actualizar» o «Más tarde». También en Apariencia ›
+  Buscar actualizaciones.
+- «Actualizar» la baja, comprueba que no esté dañada (SHA256) y al tocar
+  «Reiniciar ahora» Ctrl-P se cierra del todo, reemplaza solo los archivos del
+  programa y se vuelve a abrir. La carpeta CTRL-P DOC (proyectos, copias,
+  exportaciones) y tu configuración no se tocan.
+- Para publicar una versión: subir el número en CtrlP.py (VERSION y
+  VERSION_INTERNA), anotar las novedades en NOVEDADES.md y subir la carpeta
+  windows al repositorio. GitHub prueba el programa, arma el .exe y publica.
+
+PRIMER USO
+1. Ingresá tu Nombre y Empresa (se guardan en mayúsculas, ej. CARLOS - CONSORCIO).
+2. Proyecto › Importar presupuesto… : el Excel debe tener UNA sola hoja y con
+   valores (si son fórmulas que apuntan a otras hojas, copiá la hoja y usá
+   Pegado especial › Valores). Revisá columnas › Crear proyecto (.ctrlp).
+   En la revisión podés corregir una celda con doble clic, o «Cargar Excel
+   corregido» sin perder lo que ya corregiste.
+3. Ubicaciones: edificios con sus niveles (sótano, niveles, azotea) y áreas sin
+   nivel (ej. OBRAS EXTERIORES). Un área sin nivel puede tener tramos
+   («+ tramo», ej. SECTOR I → TRAMO 1, ACCESO NORTE): cada tramo es una
+   ubicación (contractual, registro, planos e informes) y el área muestra el
+   total. Si el área ya tenía avance antes de dividirla, ese avance queda en
+   «(GENERAL)» para que lo repartas.
+4. Datos fijos (opcional): cantidad contractual por edificio/nivel.
+5. Registro de avance: elegí la fecha, ingresá lo ejecutado y Guardar.
+6. Informes: Estado al / Período, Exportar a Excel y Corte de estimación
+   (presupuesto completo + cantidad y monto cobrables del período).
+   Interruptor «Ver solo lo contractual»: en las partidas repartidas por
+   ubicación (con cantidad contractual por edificio/nivel) solo cuenta el
+   avance de las ubicaciones que tienen cantidad, y cada una hasta su
+   cantidad. El resto queda registrado pero no cuenta («Fuera de lo
+   contractual»). Las partidas sin repartir cuentan igual que siempre. Con
+   el interruptor activado, Exportar a Excel y Corte de estimación salen
+   igual que lo que se ve en pantalla.
+   «Mostrar»: Presupuesto completo / Con avance (ejecutado dentro de las
+   fechas) / Con historial (lo de las fechas más lo acumulado de antes) /
+   Al 100 %. Siempre con sus etapas y subetapas. El Excel sale con el mismo
+   filtro. Al desplazarse a la derecha quedan fijas Código, Descripción,
+   Unid., Cantidad, Acum. anterior y % ant. (izquierda) y Período, Acum.
+   total, %, Saldo y Monto (derecha); se mueven los días o semanas.
+   «Detallado por ubicación» también muestra los días o semanas.
+   Las actividades al 100 % (o más) de lo contractual van en verde (Informes,
+   Excel, lista de partidas y Registro de avance).
+7. Enter en las tablas (Registro, Datos fijos, Ubicaciones): como en Excel,
+   el valor queda en la casilla y baja a la de abajo; en la última se queda.
+
+USUARIOS
+- Cualquiera puede crear su usuario con contraseña («Crear usuario con
+  contraseña» en el ingreso). Los nombres no se repiten. El usuario queda
+  guardado dentro de cada proyecto, así lo reconoce en cualquier PC.
+- El ojito muestra u oculta la contraseña mientras se escribe.
+- CARLOS - CONSORCIO (administrador, el del husky) puede ver, cambiar o quitar
+  las contraseñas de todos: clic en su nombre, abajo a la izquierda.
+
+MÁS DETALLES DE LA ACTIVIDAD (Datos fijos)
+- Por tramos: tuberías, excavaciones, muros. Cada ubicación puede tener tramos
+  con cantidad opcional; donde no haya tramos se pone solo la cantidad.
+- Pago por hitos: ej. Estructura 50 %, Primer forro 17 %… (deben sumar 100 %).
+  «Bloquear porcentajes» los protege; para cambiarlos hay que desbloquear.
+  Avance equivalente = cantidad de cada hito × su %.
+  Con «+ Agregar tipo» la actividad se separa por tipos (ej. tres tipos de
+  tabique), cada uno con sus hitos que suman 100 %. En Datos fijos cada nivel
+  lleva la cantidad de cada tipo y la del nivel es la suma de los tipos.
+- Desglose por equipos: la cantidad de una ubicación se reparte entre equipos
+  (ej. B1 NIVEL 1: UMA-01 100 ML de ductos, FC-01 50 ML). Los equipos son
+  propios de cada partida. Los tramos pueden ir dentro de un equipo.
+- Una partida puede tener equipos, tramos e hitos en cualquier combinación.
+
+TOPES DE COBRO (partida › nivel › equipo › tramo)
+- Solo hay tope si se asigna cantidad. Lo que pase de lo asignado es
+  excedente no cobrable, aunque arriba sobre cantidad; para cobrarlo hay que
+  rebalancear las cantidades en Datos fijos.
+- Lo que no tiene cantidad asignada toma lo que esté disponible arriba.
+
+PLANOS (opcional)
+- Librería de planos: cargás cada plano una sola vez (PDF o imagen, opcional
+  aplanar y comprimir con PdFOL) y queda limpio como base.
+- Cada plano se vincula por NIVEL (ej. B1 NIVEL 1), por EDIFICIO (todos los
+  niveles de B1) o GENERAL (ej. «GENERAL NIVEL 1» para B1, B2, B3 nivel 1).
+- Hojas: cada actividad marca en su propia hoja del plano; en la hoja de
+  Tabiquería solo ves Tabiquería. Plano general = una sola hoja, y en cada
+  marca elegís el edificio. Si elegís una hoja de otra actividad te avisa y
+  te ofrece abrir una hoja limpia.
+- En la pestaña Planos: a la izquierda la fecha, las actividades del día con
+  lo pendiente de marcar y las hojas de la actividad; las marcas se ven con un
+  color por edificio (clic en la leyenda para cambiarlo).
+- Al guardar en Registro de avance pregunta «¿Marcar en el plano?»: Después
+  (queda pendiente) o Marcar ahora (abre la hoja con el registro elegido).
+- Al marcar un registro: «Solo marcar» o «Usar la medida del plano»; si no
+  coincide, elegís Reemplazar o Conservar la manual.
+- Herramientas: Línea, Línea libre, Rectángulo, Círculo, Polígono, Área libre,
+  Punto y Calibrar (dos clics sobre una cota, con decimales). Zoom profundo.
+- «Área libre» se dibuja punto por punto (polilínea); si arrastrás, ese tramo
+  va a mano alzada. Cierra con clic en el primer punto, doble clic o Enter.
+- Vacíos en áreas: al guardar un área, «Agregar vacíos…» vuelve al plano para
+  dibujar cada vacío dentro del área (ventanas, ductos, huecos); la medida
+  resta los vacíos sola. En una marca existente: «Datos de la marca» › Vacíos.
+- Imán (interruptor «Imán»): los puntos se pegan a esquinas y líneas del
+  dibujo del plano (círculo con cruz = esquina, cuadrito = línea) y a los
+  vértices de otras marcas (círculo azul).
+- Herramienta «Editar» (al lado de Mover): clic en una marca y arrastrala para
+  moverla; arrastrá los cuadritos para cambiar su forma (si cambia la medida
+  pregunta si actualiza la cantidad). Doble clic: datos de la marca. Supr:
+  borrarla («Quitar del plano» conserva la cantidad sin marcar, o «Borrar
+  también el avance»).
+- Ctrl+Z (o «Deshacer») deshace lo último hecho en planos: marcas, cambios,
+  borrados, hojas y planos eliminados.
+- «Quitar hoja» quita un plano asignado por error a la actividad; en la
+  Librería: «Eliminar plano» y «Eliminar hoja».
+- «Por acumulado»: para empezar a medio proyecto. Elegís la fecha de corte y
+  marcás todo lo acumulado hasta esa fecha por actividad y ubicación. No crea
+  avance nuevo: ubica lo ya registrado y deja el esquema válido a esa fecha.
+- «Estilo…» por actividad: opacidad y grosor de líneas (sin límite práctico,
+  para ductos), relleno y borde de áreas, forma, tamaño y borde de puntos.
+- Informes › Planos marcados: por día o período, lo de la fecha en verde y lo
+  anterior en rojo (colores configurables), y exportar a PDF o PNG.
+- Notas: se ven pequeñas con el plano completo y crecen al acercar. El
+  interruptor «Notas» las oculta en Planos, en Informes y al exportar.
+
+GUARDAR
+- Archivo master «Registro_Semanal.ctrlp»: la primera vez que le das Guardar
+  elegís dónde crearlo (por defecto CTRL-P DOC). Guarda TODO: presupuesto,
+  ubicaciones, datos fijos, avances, planos y marcas, usuarios e historial.
+  Desde ahí Guardar escribe siempre en ese archivo sin preguntar.
+- «Exportar copia» con «Solo agregar avance» propone «actualizacion_semanal.ctrlp»:
+  quien la recibe solo agrega avance; al devolverla, «Importar archivo recibido».
+- Junto a Ctrl-P.exe se crea la carpeta «CTRL-P DOC». Al crear un proyecto,
+  exportar copias, informes, cortes o planos, la ventana para elegir dónde
+  guardar se abre ahí (podés elegir otra carpeta).
+- Botón «Guardar» arriba en el menú lateral (o Ctrl+S): guarda lo que tengas a
+  medio escribir en la pantalla y el archivo .ctrlp. Siempre en el mismo archivo,
+  sin copias ni «guardar como».
+- Botón «↻ Refrescar» (o F5): Proyecto, Presupuesto, Ubicaciones e Informes
+  se muestran al instante como quedaron; si hubo cambios desde la última vez,
+  «Refrescar» se pone amarillo y lo apretás para ver los datos nuevos.
+  Datos fijos y Planos se actualizan solos.
+- Registro de avance: al escribir una cantidad solo se actualiza esa fila
+  (Acum. total, % avance y Saldo), para que no se ponga lento. Los totales por
+  tipo, edificio y general, el avance general y el monto del día se
+  recalculan con «Refrescar» (F5) o al Guardar; mientras tanto abajo dice
+  «Totales sin actualizar». Refrescar no borra lo que escribiste.
+
+RENDIMIENTO Y PANTALLA
+- Usa todos los núcleos del procesador para abrir y cargar planos PDF pesados
+  y para dibujar el plano al mover o acercar.
+- La ventana se adapta a pantallas chicas (laptops): textos que saltan de
+  línea, menú lateral solo con íconos en ventanas angostas, herramientas y
+  filtros que pasan a una segunda fila, tablas con desplazamiento horizontal.
+
+ARCHIVOS QUE CREA JUNTO AL PROYECTO
+- "<proyecto> - respaldos"      copia de seguridad de cada día que lo abrís.
+- "<proyecto> - historial.xlsx" quién cambió qué, cuándo, valor anterior/nuevo.
+
+INTERCAMBIO ENTRE COMPUTADORAS
+- Proyecto › Exportar copia (opcional "Solo agregar avance"). Tu archivo sigue
+  editable. Cuando te devuelvan la copia (ej. V2): Proyecto › Importar archivo
+  recibido › revisás el resumen › Aplicar cambios.
+
+Para abrir un .ctrlp con doble clic: clic derecho › Abrir con › Elegir otra
+aplicación › Ctrl-P.exe (marcar "usar siempre").
+
+Fuente Inter incluida bajo licencia SIL Open Font License (fuentes/OFL-Inter.txt).

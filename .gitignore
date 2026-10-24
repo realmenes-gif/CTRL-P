@@ -37,3 +37,14 @@ google-services.json
 # Python
 __pycache__/
 *.pyc
+
+# Ctrl-P Windows (lo que se genera al probar o armar)
+windows/CTRL-P DOC/
+windows/dist/
+windows/_dist/
+windows/_build/
+windows/*.spec
+windows/Ctrl-P_portable/
+windows/*.zip
+windows/*.sha256
+windows/autoprueba*.log

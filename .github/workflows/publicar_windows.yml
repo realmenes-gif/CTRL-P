@@ -1,0 +1,107 @@
+# GitHub Actions: arma Ctrl-P.exe en Windows y publica la version que detecta el actualizador (igual que PdFOL).
+# Se dispara al subir cambios de la carpeta windows/: lee VERSION_INTERNA de windows/CtrlP.py y, si esa
+# version todavia no esta publicada, prueba el programa, arma el portable y crea la version (etiqueta vX).
+name: Publicar Ctrl-P Windows
+
+on:
+  push:
+    branches: [main]
+    paths: ['windows/**', '.github/workflows/publicar_windows.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  armar:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ver la version del programa
+        id: ver
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $m = Select-String -Path CtrlP.py -Pattern '^VERSION_INTERNA = "([^"]+)"' | Select-Object -First 1
+          $v = $m.Matches[0].Groups[1].Value
+          if (-not $v) { Write-Error "No encuentro VERSION_INTERNA en CtrlP.py"; exit 1 }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          gh release view "v$v" --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) { "existe=1" >> $env:GITHUB_OUTPUT; Write-Host "v$v ya esta publicada: no se hace nada." }
+          else { "existe=0" >> $env:GITHUB_OUTPUT; Write-Host "Se publica v$v." }
+          exit 0
+
+      - uses: actions/setup-python@v6
+        if: steps.ver.outputs.existe == '0'
+        with:
+          python-version: "3.12"
+
+      - name: Instalar librerias (mismas que crear_portable.bat)
+        if: steps.ver.outputs.existe == '0'
+        run: python -m pip install --disable-pip-version-check "customtkinter>=5.2,<6" openpyxl lxml pillow "pymupdf>=1.24,<2" cryptography pyinstaller
+
+      - name: Prueba antes de armar (proyecto de prueba, todas las paginas, informes y Excel)
+        if: steps.ver.outputs.existe == '0'
+        shell: pwsh
+        run: |
+          python prueba\crear_prueba.py "$env:RUNNER_TEMP\prueba"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $env:CTRLP_AUTOPRUEBA = "$env:RUNNER_TEMP\prueba\Registro_Semanal.ctrlp"
+          $env:CTRLP_AUTOPRUEBA_LOG = Join-Path $PWD "autoprueba.log"
+          $p = Start-Process python -ArgumentList "CtrlP.py" -PassThru -NoNewWindow
+          $null = $p.Handle
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); Write-Error "Ctrl-P no termino la prueba"; exit 1 }
+          if (Test-Path autoprueba.log) { Get-Content autoprueba.log }
+          if (-not (Select-String -Path autoprueba.log -Pattern "AUTOPRUEBA OK" -Quiet)) { Write-Error "La prueba fallo"; exit 1 }
+          if (Select-String -Path autoprueba.log -Pattern "FALLO" -Quiet) { Write-Error "La prueba fallo"; exit 1 }
+          Write-Host "Prueba OK"
+
+      - name: Armar Ctrl-P.exe
+        if: steps.ver.outputs.existe == '0'
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --onedir --name Ctrl-P --icon ctrlp.ico `
+            --collect-all customtkinter --collect-all pymupdf --collect-submodules cryptography `
+            --hidden-import lxml.etree --hidden-import PIL._tkinter_finder --hidden-import PIL.ImageTk `
+            --add-data "fuentes;fuentes" --add-data "ctrlp.ico;." CtrlP.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Probar el .exe, comprimir y calcular SHA256
+        if: steps.ver.outputs.existe == '0'
+        shell: pwsh
+        run: |
+          Move-Item dist\Ctrl-P Ctrl-P_portable
+          # prueba del .exe ya armado (si le falta una libreria, aca se nota)
+          python prueba\crear_prueba.py "$env:RUNNER_TEMP\prueba_exe"
+          $env:CTRLP_AUTOPRUEBA = "$env:RUNNER_TEMP\prueba_exe\Registro_Semanal.ctrlp"
+          $env:CTRLP_AUTOPRUEBA_LOG = Join-Path $PWD "autoprueba_exe.log"
+          $p = Start-Process Ctrl-P_portable\Ctrl-P.exe -PassThru
+          $null = $p.Handle
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); Write-Error "Ctrl-P.exe no termino la prueba"; exit 1 }
+          if (Test-Path autoprueba_exe.log) { Get-Content autoprueba_exe.log }
+          if (-not (Select-String -Path autoprueba_exe.log -Pattern "AUTOPRUEBA OK" -Quiet)) { Write-Error "La prueba del .exe fallo"; exit 1 }
+          if (Select-String -Path autoprueba_exe.log -Pattern "FALLO" -Quiet) { Write-Error "La prueba del .exe fallo"; exit 1 }
+          Remove-Item Env:CTRLP_AUTOPRUEBA
+          # que no viaje nada de la prueba dentro del zip
+          if (Test-Path "Ctrl-P_portable\CTRL-P DOC") { Remove-Item -Recurse -Force "Ctrl-P_portable\CTRL-P DOC" }
+          Compress-Archive -Path Ctrl-P_portable -DestinationPath Ctrl-P_portable.zip
+          $h = (Get-FileHash Ctrl-P_portable.zip -Algorithm SHA256).Hash.ToLower()
+          "$h  Ctrl-P_portable.zip" | Out-File -Encoding ascii Ctrl-P_portable.zip.sha256
+
+      - name: Crear la version
+        if: steps.ver.outputs.existe == '0'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Ctrl-P v${{ steps.ver.outputs.version }} (Windows)
+          body_path: windows/NOVEDADES.md
+          make_latest: true
+          files: |
+            windows/Ctrl-P_portable.zip
+            windows/Ctrl-P_portable.zip.sha256

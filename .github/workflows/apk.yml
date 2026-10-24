@@ -3,6 +3,7 @@ name: Compilar APK
 on:
   push:
     branches: [main]
+    paths-ignore: ['windows/**', '.github/workflows/publicar_windows.yml']
   workflow_dispatch:
 
 permissions:
