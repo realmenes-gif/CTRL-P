@@ -1,8 +1,12 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.3.3"
+VERSION_INTERNA = "1.3.4"
 
 CAMBIOS = [
+    ("1.3.4", [
+        "En línea: las ventanas de espera («Consultando…», «Bajando…») tienen «Cancelar» y la X funciona; después de 5 segundos muestran cuánto llevan. Lo que sube o envía cambios no se cancela, para no dejarlo a medias.",
+        "En línea: si Google no responde, avisa en 1 minuto (antes podía quedarse esperando) y anota en errores.log cuánto tardó cada consulta.",
+    ]),
     ("1.3.3", [
         "En línea: la ventana de la clave se cierra al tocar «Aceptar» o «Cancelar» (antes se quedaba en pantalla aunque el proyecto ya se había abierto).",
         "En línea: un doble toque en «Abrir» o «Aceptar» ya no abre la ventana dos veces.",

@@ -391,11 +391,13 @@ class Sesion:
 SESION = Sesion()
 
 
-def llamar(accion, timeout=90, **datos):
+def llamar(accion, timeout=60, **datos):
     """Llama al servidor. Devuelve el diccionario de respuesta o lanza ErrorNube."""
     if not url_servidor():
         raise ErrorNube("Ctrl-P en línea todavía no está configurado (falta el servidor de Google).")
+    t0 = time.time()
     datos = dict(datos, accion=accion, id_token=SESION.token())
+    t_tok = time.time() - t0
     cuerpo = json.dumps(datos).encode("utf-8")
     req = urllib.request.Request(url_servidor(), data=cuerpo, headers={"Content-Type": "application/json",
                                                                        "User-Agent": "Ctrl-P"})
@@ -403,7 +405,15 @@ def llamar(accion, timeout=90, **datos):
         with urllib.request.urlopen(req, timeout=timeout, context=_ctx()) as r:
             texto = r.read().decode("utf-8")
     except urllib.error.URLError as e:
+        anotar(f"{accion}: sin conexión tras {time.time() - t0:.1f} s ({getattr(e, 'reason', e)})")
         raise ErrorNube(f"No hay conexión con Google ({getattr(e, 'reason', e)}). Revisá internet.")
+    except (TimeoutError, OSError) as e:
+        anotar(f"{accion}: Google no respondió en {time.time() - t0:.1f} s ({e})")
+        raise ErrorNube(f"Google no respondió a tiempo ({int(time.time() - t0)} s). Probá de nuevo en un momento.")
+    dt = time.time() - t0
+    if dt > 8 or len(cuerpo) > 200000:
+        anotar(f"{accion}: {dt:.1f} s (sesión {t_tok:.1f} s), enviado {len(cuerpo) / 1e6:.2f} MB, "
+               f"recibido {len(texto) / 1e6:.2f} MB")
     try:
         d = json.loads(texto)
     except ValueError:

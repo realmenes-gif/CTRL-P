@@ -30,12 +30,16 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.8"
-VERSION_INTERNA = "1.8"
+VERSION = "v1.9"
+VERSION_INTERNA = "1.9"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.9", [
+        "En línea: las ventanas de espera («Consultando…», «Bajando…») tienen «Cancelar» y la X funciona; después de 5 segundos muestran cuánto llevan. Lo que sube o envía cambios no se cancela, para no dejarlo a medias.",
+        "En línea: si Google no responde, avisa en 1 minuto (antes podía quedarse esperando) y anota en errores.log cuánto tardó cada consulta.",
+    ]),
     ("v1.8", [
         "En línea: Ctrl-P ya trae puestos los datos del servidor de Google. Cada persona solo inicia sesión con "
         "su cuenta de Google y escribe la clave del proyecto (ya no aparece «Configurar…»).",
@@ -708,11 +712,20 @@ class App(ctk.CTk):
         threading.Thread(target=hilo, daemon=True).start()
         self._mirar_cola()
 
-    def en_fondo(self, titulo, texto, fn, cancelar=None):
+    def en_fondo(self, titulo, texto, fn, cancelar=None, cancelable=False):
         """Hace fn() en segundo plano (internet) con una ventanita de espera; la ventana sigue respondiendo.
-        Devuelve el resultado de fn o vuelve a lanzar su error aqui."""
+        Devuelve el resultado de fn o vuelve a lanzar su error aqui.
+        cancelable: muestra «Cancelar» (y la X) para dejar de esperar; lo que siga en internet se descarta."""
         import time
-        dlg = DialogoProgreso(self, titulo, texto, cancelar=cancelar)
+        dejar = {"si": False}
+
+        def soltar():
+            dejar["si"] = True
+            if cancelar:
+                cancelar()
+        dlg = DialogoProgreso(self, titulo, texto, cancelar=soltar if (cancelar or cancelable) else None)
+        if cancelar or cancelable:
+            dlg.protocol("WM_DELETE_WINDOW", soltar)
         res = {}
 
         def correr():
@@ -723,14 +736,26 @@ class App(ctk.CTk):
         h = threading.Thread(target=correr, daemon=True)
         h.start()
         f = 0.03
-        while h.is_alive():
+        t0 = time.monotonic()
+        seg = -1
+        while h.is_alive() and not (dejar["si"] and not cancelar):
             f += (0.95 - f) * 0.015
             try:
                 dlg.barra.set(f)
+                s = int(time.monotonic() - t0)
+                if s != seg and s >= 5:              # que se vea que sigue trabajando
+                    seg = s
+                    dlg.l.configure(text=f"{texto}  ({s} s)")
                 dlg.update()
             except tk.TclError:
                 pass
             time.sleep(0.04)
+        if dejar["si"] and not cancelar and h.is_alive():
+            try:
+                dlg.cerrar()
+            except tk.TclError:
+                pass
+            raise nb.ErrorNube("Se canceló. Podés intentarlo de nuevo cuando quieras.")
         try:
             dlg.cerrar()
         except tk.TclError:
@@ -5350,9 +5375,11 @@ class PaginaEnLinea(Pagina):
             self.refrescar()
 
     def _red(self, texto, fn):
-        """Llamada a Google en segundo plano; muestra el error y devuelve None si falla."""
+        """Llamada a Google en segundo plano; muestra el error y devuelve None si falla.
+        Las consultas se pueden cancelar; lo que sube o guarda cambios, no (para no dejarlo a medias)."""
+        escribe = texto.startswith(("Subiendo", "Enviando", "Guardando", "Avisando"))
         try:
-            return self.app.en_fondo("En línea", texto, fn)
+            return self.app.en_fondo("En línea", texto, fn, cancelable=not escribe)
         except nb.NecesitaSesion as e:
             ui.info(self.app, "Google", str(e))
             self.refrescar()

@@ -1,4 +1,9 @@
-## Ctrl-P v1.8 (Windows)
+## Ctrl-P v1.9 (Windows)
+
+- En línea: las ventanas de espera («Consultando…», «Bajando…») tienen «Cancelar» y la X funciona; después de 5 segundos muestran cuánto llevan. Lo que sube o envía cambios no se cancela, para no dejarlo a medias.
+- En línea: si Google no responde, avisa en 1 minuto (antes podía quedarse esperando) y anota en errores.log cuánto tardó cada consulta.
+
+### Incluye lo de la v1.8
 
 - En línea: Ctrl-P ya trae puestos los datos del servidor de Google. Cada persona solo inicia sesión con su cuenta de Google y escribe la clave del proyecto (ya no aparece «Configurar…»).
 

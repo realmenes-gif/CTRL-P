@@ -43,7 +43,8 @@ class Espera(ui.Dialogo):
 
     def _latir(self, *_):
         self._n = self._n % 5 + 1
-        self.puntos.text = "● " * self._n
+        self._t = getattr(self, "_t", 0) + 0.4
+        self.puntos.text = "● " * self._n + (f"   {int(self._t)} s" if self._t >= 5 else "")
 
     def cerrar(self):
         self._ev.cancel()
@@ -101,9 +102,18 @@ def correr(flujo, al_fallar=None):
                 al_fallar()
             return
         if isinstance(y, Red):
-            dlg = Espera(y.texto, y.cancelar)
-            dlg.open()
             res = {}
+            escribe = y.texto.startswith(("Enviando", "Subiendo", "Descifrando"))
+
+            def cancelar():
+                if y.cancelar:                     # (iniciar sesion: el hilo termina solo con error)
+                    y.cancelar()
+                    return
+                res["cancelado"] = True            # consultas: se deja de esperar; la respuesta se descarta
+                dlg.cerrar()
+                paso(error=nb.ErrorNube("Se canceló. Podés intentarlo de nuevo cuando quieras."), t=tk)
+            dlg = Espera(y.texto, cancelar if (y.cancelar or not escribe) else None)
+            dlg.open()
 
             def hilo():
                 try:
@@ -114,6 +124,8 @@ def correr(flujo, al_fallar=None):
 
             def fin():
                 dlg.cerrar()
+                if res.get("cancelado"):
+                    return
                 if "e" in res:
                     paso(error=res["e"], t=tk)
                 else:
