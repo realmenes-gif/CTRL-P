@@ -266,7 +266,7 @@ class App(ctk.CTk):
                 cv.create_line(28, y + 2, w - 28, y + 2, fill=col("borde"))
                 y += 12
                 grupo_ant = grupo
-            activo = self.p is not None or clave in ("proyecto", "apariencia")
+            activo = self.p is not None or clave in ("proyecto", "apariencia", "enlinea")
             if comp:
                 if clave == self.pagina:
                     cv.create_rectangle(10, y - 4, w - 10, y + 38, fill=col("lat_sel"), outline="")

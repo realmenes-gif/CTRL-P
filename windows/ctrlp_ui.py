@@ -35,6 +35,7 @@ ICONOS = [  # clave, titulo, color, grupo
     ("registro", "Registro de avance", "#10B981", 2),
     ("planos", "Planos", "#0EA5E9", 2),
     ("informes", "Informes de avance", "#EC4899", 2),
+    ("enlinea", "En línea", "#2563EB", 3),
     ("apariencia", "Apariencia", "#64748B", 3),
 ]
 
@@ -237,6 +238,17 @@ def icono(clave, color, tam=28, escala=4):
         L([(4.5, 12), (11, 12), (11, 18)], max(1, lw - 1))
         L([(11, 9), (15, 9)], max(1, lw - 1))
         L([(15, 6), (15, 12), (19.5, 12)], max(1, lw - 1))
+    elif clave == "enlinea":          # nube con flechas de subir y bajar
+        d.ellipse([4 * s, 9.5 * s, 11 * s, 16.5 * s], fill=w)
+        d.ellipse([8 * s, 6 * s, 16.5 * s, 14.5 * s], fill=w)
+        d.ellipse([13 * s, 9 * s, 20 * s, 16 * s], fill=w)
+        d.rectangle([7.5 * s, 12 * s, 16.5 * s, 16.5 * s], fill=w)
+        az = _hex(color) + (255,)
+        lw2 = max(1, int(1.4 * s))
+        d.line([(10.2 * s, 15.5 * s), (10.2 * s, 10.5 * s)], fill=az, width=lw2)
+        d.polygon([(8.4 * s, 12 * s), (12 * s, 12 * s), (10.2 * s, 9.6 * s)], fill=az)
+        d.line([(13.8 * s, 10 * s), (13.8 * s, 15 * s)], fill=az, width=lw2)
+        d.polygon([(12 * s, 13.5 * s), (15.6 * s, 13.5 * s), (13.8 * s, 15.9 * s)], fill=az)
     elif clave == "apariencia":
         d.ellipse([5 * s, 5 * s, 19 * s, 19 * s], outline=w, width=lw)
         d.pieslice([5 * s, 5 * s, 19 * s, 19 * s], 90, 270, fill=w)
@@ -1005,7 +1017,7 @@ def tabla_fija(master, izq, centro, der):
     mov = vistas.get("centro", vistas.get("izq"))
     if mov:
         tvm, cm = mov
-        estado = {"cabe": None, "ultimo": None}
+        estado = {"cabe": None, "ultimo": None, "barra": None}
 
         def mover_x(*a):
             # si todas las columnas ya se ven, no hay nada que desplazar (tocar la barra no hace nada)
@@ -1013,48 +1025,79 @@ def tabla_fija(master, izq, centro, der):
                 return
             tvm.xview(*a)
 
-        sbx = ctk.CTkScrollbar(marco, command=mover_x, orientation="horizontal", button_color=C["suave_h"],
-                               button_hover_color=C["borde"])
+        def poner_barra():
+            if estado["barra"] is None:
+                b = ctk.CTkScrollbar(marco, command=mover_x, orientation="horizontal", button_color=C["suave_h"],
+                                     button_hover_color=C["borde"])
+                b.grid(row=1, column=cm, sticky="ew", padx=(0 if cm else 8, 0), pady=(0, 6))
+                estado["barra"] = b
+            return estado["barra"]
+
+        def quitar_barra():
+            # se destruye (esconderla deja su dibujo en pantalla con la escala de Windows)
+            if estado["barra"] is not None:
+                b, estado["barra"] = estado["barra"], None
+                b.destroy()
 
         def al_desplazar_x(a, b):
             a, b = float(a), float(b)
+            if a <= 0.004 and b >= 0.996:               # le falta menos de un pixel: cabe
+                a, b = 0.0, 1.0
             if estado["ultimo"] == (a, b):
                 return                                 # sin cambios: no se redibuja (evita idas y vueltas)
             estado["ultimo"] = (a, b)
             cabe = a <= 0.0 and b >= 1.0
-            if cabe != estado["cabe"]:
-                estado["cabe"] = cabe
-                if cabe:
-                    sbx.grid_remove()                  # la barra solo aparece cuando hay columnas que desplazar
-                else:
-                    sbx.grid(row=1, column=cm, sticky="ew", padx=(0 if cm else 8, 0), pady=(0, 6))
-            if not cabe:
-                sbx.set(a, b)
+            estado["cabe"] = cabe
+            if cabe:
+                quitar_barra()                         # la barra solo existe cuando hay columnas que desplazar
+            else:
+                poner_barra().set(a, b)
         tvm.configure(xscrollcommand=al_desplazar_x)
-        sbx.grid(row=1, column=cm, sticky="ew", padx=(0 if cm else 8, 0), pady=(0, 6))
         tvm.bind("<Shift-MouseWheel>",
                  lambda e: ("break" if estado["cabe"] else (tvm.xview_scroll(-1 if e.delta > 0 else 1, "units"), "break")[1]))
 
-    # la descripcion se agranda para llenar el espacio, o se achica (hasta 150) para dejar lugar al centro
+    # Si todo el centro (dias, semanas, % periodo, % aporte) cabe, la descripcion se queda con el espacio que
+    # sobra (sin hueco entre el centro y la derecha). Si no cabe, la descripcion se achica (hasta 130) y el
+    # centro se desplaza con su barra. Se calcula con los anchos reales (vale con cualquier escala de Windows).
     if centro and "izq" in vistas:
-        tvi = vistas["izq"][0]
-        fijo = sum(c[2] for c in izq if c[0] != "descripcion") + 40 + sum(c[2] for c in der) + 40
-        total_centro = sum(c[2] for c in centro)
+        tvi, ci = vistas["izq"]
+        tvc, cc = vistas["centro"]
+        tvd = vistas["der"][0] if "der" in vistas else None
+        estado_aj = {"cabe": None}
+
+        def ancho_cols(tv, saltar=()):
+            return sum(int(tv.column(c, "width")) for c in tv["columns"] if c not in saltar)
 
         def ajustar(e=None):
             w = marco.winfo_width()
             if w <= 1:
                 return
             esc = ctk.ScalingTracker.get_widget_scaling(marco)
-            libre = w / esc - fijo
-            quiero = libre - total_centro if libre - total_centro >= 130 else libre - min(total_centro, 3 * 88)
-            nuevo = int(max(130, min(520, quiero)) * esc)
+            try:
+                otros = ancho_cols(tvi, ("descripcion",)) + int(tvi.column("#0", "width"))
+                der_ = ancho_cols(tvd) if tvd is not None else 0
+                cen = ancho_cols(tvc)
+            except (tk.TclError, ValueError):
+                return
+            margen = int(48 * esc) + sb.winfo_width()
+            libre = w - otros - der_ - margen
+            minimo = int(130 * esc)
+            cabe = libre - cen >= minimo
+            if cabe:
+                nuevo = libre - cen - 6                 # unos pixeles de mas: el centro entra completo
+            else:
+                nuevo = max(minimo, min(int(520 * esc), libre - min(cen, int(3 * 88 * esc))))
+            if cabe != estado_aj["cabe"]:
+                estado_aj["cabe"] = cabe
+                marco.grid_columnconfigure(ci, weight=1 if cabe else 0)
+                marco.grid_columnconfigure(cc, weight=0 if cabe else 1)
+                tvi.column("descripcion", stretch=cabe)
             try:
                 actual = int(tvi.column("descripcion", "width"))
             except (tk.TclError, ValueError):
                 actual = -100
             if abs(nuevo - actual) > 3:          # sin cambios pequeños: evita que la tabla se reacomode sin fin
-                tvi.column("descripcion", width=nuevo)
+                tvi.column("descripcion", width=max(minimo, nuevo))
         marco.bind("<Configure>", ajustar, add="+")
     return marco, arbol
 

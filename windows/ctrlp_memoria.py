@@ -166,6 +166,12 @@ def datos_partida(p, it, desde, hasta, cortes, solo_contractual=False):
     con_tipos = any(t for t, _ in grupos)
     tipos = [t for t, _ in grupos if t] if con_tipos else [""]
     tipo_de_hito = {h["id"]: (h.get("tipo") or "") for h in hitos.values()}
+    # tramos de la actividad (Datos fijos «por tramos»): cada tramo es una fila con su numero
+    tramos_act = []
+    if not con_tipos and p.detalle_de(iid).get("tramos"):
+        tramos_act = [dict(r) for r in p.con.execute("SELECT * FROM tramos WHERE item=? ORDER BY orden, nombre", (iid,))
+                      if r["nivel"] in ubic]
+    usar_tramos = bool(tramos_act)
 
     # diseño: {(tipo, nivel): cantidad}
     diseno = {}
@@ -177,12 +183,24 @@ def datos_partida(p, it, desde, hasta, cortes, solo_contractual=False):
         for nv, c in p.contractual_de(iid).items():
             if nv in ubic:
                 diseno[("", nv)] = c
-    con_diseno = bool(diseno)
+    # diseño por tramo: {(tipo, nivel, tramo): cantidad}
+    diseno3 = {(tp, nv, ""): c for (tp, nv), c in diseno.items()}
+    if usar_tramos:
+        for t in tramos_act:
+            if t["contractual"] is not None:
+                diseno3[("", t["nivel"], t["id"])] = t["contractual"]
+                # el nivel con tramos: su cantidad va repartida en los tramos
+                diseno3.pop(("", t["nivel"], ""), None)
+        diseno = {}
+        for (tp, nv, _tr), c in diseno3.items():
+            diseno[(tp, nv)] = diseno.get((tp, nv), 0.0) + c
+    con_diseno = bool(diseno3)
 
-    # ejecutado ponderado por dia: {(tipo, nivel, fecha): cantidad}
+    # ejecutado ponderado por dia: {(tipo, nivel, tramo, fecha): cantidad}
     ej = {}
-    for r in p.con.execute("SELECT nivel, hito, fecha, SUM(cantidad) s FROM avances WHERE item=? AND fecha<=? "
-                           "GROUP BY nivel, hito, fecha", (iid, hasta)):
+    ids_tramo = {t["id"] for t in tramos_act}
+    for r in p.con.execute("SELECT nivel, hito, tramo, fecha, SUM(cantidad) s FROM avances WHERE item=? AND fecha<=? "
+                           "GROUP BY nivel, hito, tramo, fecha", (iid, hasta)):
         if r["nivel"] not in ubic:
             continue
         h = hitos.get(r["hito"] or "")
@@ -192,30 +210,38 @@ def datos_partida(p, it, desde, hasta, cortes, solo_contractual=False):
         tp = tipo_de_hito.get(r["hito"] or "", "") if con_tipos else ""
         if con_tipos and tp not in tipos:
             continue
-        k = (tp, r["nivel"], r["fecha"])
+        tr = (r["tramo"] or "") if (usar_tramos and (r["tramo"] or "") in ids_tramo) else ""
+        k = (tp, r["nivel"], tr, r["fecha"])
         ej[k] = ej.get(k, 0.0) + (r["s"] or 0.0) * pct
 
     # tramos de tiempo: anterior (hasta el dia antes de «desde») y cada semana
     ant_hasta = dia_anterior(desde)
     tramos_t = [(None, ant_hasta)] + [(d0.isoformat(), d1.isoformat()) for d0, d1 in cortes]
 
-    def acum(tp, nv, hasta_):
-        return sum(v for (t, n, f), v in ej.items() if t == tp and n == nv and (hasta_ is None or f <= hasta_))
+    def acum(tp, nv, tr, hasta_):
+        return sum(v for (t, n, r_, f), v in ej.items()
+                   if t == tp and n == nv and r_ == tr and (hasta_ is None or f <= hasta_))
 
-    valores = {}      # (tipo, nivel) -> [anterior, sem1, sem2, ...]
-    claves = set(diseno) | {(t, n) for (t, n, _f) in ej}
-    for tp, nv in claves:
-        if solo_contractual and con_diseno and (tp, nv) not in diseno:
+    valores3 = {}     # (tipo, nivel, tramo) -> [anterior, sem1, sem2, ...]
+    claves = set(diseno3) | {(t, n, r_) for (t, n, r_, _f) in ej}
+    for tp, nv, tr in claves:
+        if solo_contractual and con_diseno and (tp, nv, tr) not in diseno3:
             continue
-        tope = diseno.get((tp, nv)) if solo_contractual else None
+        tope = diseno3.get((tp, nv, tr)) if solo_contractual else None
         previo, fila = 0.0, []
         for k, (_d0, d1) in enumerate(tramos_t):
-            a = acum(tp, nv, d1)
+            a = acum(tp, nv, tr, d1)
             if tope is not None:
                 a = min(a, tope)
             fila.append(a - previo)
             previo = a
-        valores[(tp, nv)] = fila
+        valores3[(tp, nv, tr)] = fila
+    valores = {}      # (tipo, nivel) -> [anterior, sem1, sem2, ...]
+    for (tp, nv, _tr), fila in valores3.items():
+        if (tp, nv) in valores:
+            valores[(tp, nv)] = [a + b for a, b in zip(valores[(tp, nv)], fila)]
+        else:
+            valores[(tp, nv)] = list(fila)
 
     # filas (edificios) y columnas (niveles) que aparecen
     usados = {nv for (_t, nv) in diseno} | {nv for (_t, nv), f in valores.items() if any(abs(x) > 1e-9 for x in f)}
@@ -227,6 +253,32 @@ def datos_partida(p, it, desde, hasta, cortes, solo_contractual=False):
         # un area exterior sin niveles va en la primera columna (I / NIVEL 1): es practicamente lo mismo
         col_de = {nv: (c or otras[0]) for nv, c in col_de.items()}
     columnas = otras or [""]
+    # disposicion «por filas»: cuando hay sectores con subdivisiones (áreas con tramos) o tramos de la actividad.
+    # Columna A = sector/ubicacion (celda combinada), «No.» = cada subdivision o tramo.
+    con_vals = {k for k, f in valores3.items() if any(abs(x) > 1e-9 for x in f)}
+    usados3 = set(diseno3) | con_vals
+    vertical = usar_tramos or any(ubic[nv]["exterior"] and ubic[nv]["nv_nombre"] for nv in usados)
+    filas_v = []
+    if vertical:
+        orden_nv = {u["nivel"]: k for k, u in enumerate(p.ubicaciones())}
+        nombre_tr = {t["id"]: t["nombre"] for t in tramos_act}
+        orden_tr = {t["id"]: k for k, t in enumerate(tramos_act)}
+        if usar_tramos:
+            grupos_v = {}
+            for (_tp, nv, tr) in usados3:
+                grupos_v.setdefault(nv, set()).add(tr)
+            for nv in sorted(grupos_v, key=lambda x: orden_nv.get(x, 0)):
+                subs = sorted(grupos_v[nv], key=lambda t: (t != "", orden_tr.get(t, 0)))
+                filas_v.append((ubic[nv]["etiqueta"], [(nombre_tr.get(tr, "—") if tr else "—", nv, tr) for tr in subs]))
+        else:
+            por_ed = {}
+            for nv in usados:
+                por_ed.setdefault(ubic[nv]["edificio"], []).append(nv)
+            for e in sorted(por_ed, key=lambda x: orden_ed.get(x, 0)):
+                nvs = sorted(por_ed[e], key=lambda x: orden_nv.get(x, 0))
+                filas_v.append((nombre_ed[e], [((etiqueta_nivel(ubic[nv]["nv_nombre"]) if not ubic[nv]["exterior"]
+                                                 else ubic[nv]["nv_nombre"]) if ubic[nv]["nv_nombre"] else "—", nv, "")
+                                               for nv in nvs]))
     obs = []
     for (iid_, nv), lista in p.observaciones(desde, hasta).items():
         if iid_ == iid:
@@ -234,7 +286,8 @@ def datos_partida(p, it, desde, hasta, cortes, solo_contractual=False):
     return {"tipos": tipos, "con_tipos": con_tipos, "con_diseno": con_diseno, "diseno": diseno,
             "valores": valores, "edificios": [(e, nombre_ed[e]) for e in eds], "columnas": columnas,
             "col_de": col_de, "nivel_de": {(ubic[nv]["edificio"], col_de[nv]): nv for nv in usados},
-            "n_tramos": len(tramos_t), "obs": obs}
+            "n_tramos": len(tramos_t), "obs": obs, "vertical": vertical, "filas_v": filas_v,
+            "diseno3": diseno3, "valores3": valores3}
 
 
 # ------------------------------------------------------------------ hoja
@@ -289,11 +342,13 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
     ws = wb.create_sheet(nombre_hoja(it, usados))
     ws.sheet_view.showGridLines = False
     ws.sheet_view.zoomScale = 70
-    cols = d["columnas"]
+    vertical = d["vertical"]
+    cols = d["columnas"] if not vertical else [""]
     n = len(cols)
     nsem = len(cortes)
     # columnas: A tipo | diseño n | TOTAL | anterior n | semanas n c/u | pendiente n
-    c_dis = 2
+    # por filas: A sector | No. | diseño | anterior | semanas | pendiente
+    c_dis = 3 if vertical else 2
     sin_total = n == 1               # un solo nivel: la columna de diseño ya es el total (sin columna TOTAL)
     c_tot = c_dis + (0 if sin_total else n)
     c_ant = c_tot + 1
@@ -306,13 +361,16 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
     anchos = {1: 16.9, 2: 14.3, 3: 16.7, 4: 12.4, 5: 15.2, 6: 14.4, 7: 13.7, 8: 14.4, 9: 13.0, 10: 12.9, 11: 13.2,
               12: 19.2}
     # que todo quepa: la columna A con el nombre mas largo y las numericas con el numero mas grande
-    largo = max([len(e) for _, e in d["edificios"]] + [len(t or "ACTIVIDAD") for t in d["tipos"]] + [10])
+    largo = max([len(e) for _, e in d["edificios"]] + [len(t or "ACTIVIDAD") for t in d["tipos"]] + [10]
+                + [len(g) for g, _ in d["filas_v"]])
     anchos[1] = max(anchos[1], largo * 1.2 + 3)
+    if vertical:
+        anchos[2] = max(8.0, max([len(s_) for _, subs in d["filas_v"] for s_, _n, _t in subs] + [3]) * 1.2 + 3)
     grande = max([abs(it["cantidad"] or 0)] + [abs(v) for v in d["diseno"].values()] + [1])
     num_ancho = len(f"{grande:,.2f}") * 1.3 + 3          # total en negrita 13
     for c in range(1, W + 1):
         w = anchos.get(c, 13.5)
-        if 1 < c <= ultima_tabla:
+        if 1 < c <= ultima_tabla and not (vertical and c == 2):
             w = max(w, num_ancho)
         if c in (2, 3, 4, 5, 6):          # el resumen usa A-F: que sus titulos quepan («EJECUTADO»)
             w = max(w, 13.6)
@@ -372,8 +430,10 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
     f = 16
     ws.row_dimensions[f].height = 40.8
     th = dict(font=_f(10, True, blanca=True), fill=_r(AZUL), al=CENTRO, fmt=CONT)
-    _unir(ws, f, 1, f, 1, "TIPO" if d["con_tipos"] else "UBICACIÓN",
+    _unir(ws, f, 1, f, 1, "TIPO" if (d["con_tipos"] and not vertical) else "UBICACIÓN",
           borde=Border(left=MEDIA, right=FINA, top=MEDIA), **th)
+    if vertical:
+        _unir(ws, f, 2, f, 2, "No.", borde=Border(left=FINA, right=FINA, top=MEDIA), **th)
     _unir(ws, f, c_dis, f, c_dis + n - 1, "CANTIDAD DE DISEÑO", borde=Border(left=FINA, right=FINA, top=MEDIA), **th)
     if not sin_total:
         _unir(ws, f, c_tot, f, c_tot, "TOTAL", borde=Border(left=FINA, top=MEDIA), **th)
@@ -394,7 +454,55 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
         der = MEDIA if c == ultima_tabla else (None if (c == c_tot and not sin_total) else FINA)
         return Border(left=izq, right=der, top=FINA, bottom=fondo)
 
-    for tp in d["tipos"]:
+    L = get_column_letter
+    for tp in (d["tipos"] if vertical else []):
+        tit = tp or "ACTIVIDAD"
+        if d["con_tipos"]:
+            ws.row_dimensions[f].height = 27
+            _unir(ws, f, 1, f, ultima_tabla, tit, font=_f(12, True, nombre="Calibri"), fill=_r(SALMON),
+                  borde=Border(left=MEDIA, right=MEDIA, top=FINA, bottom=FINA), al=CENTRO)
+            f += 1
+        f_ini = f
+        for grupo, subs in d["filas_v"]:
+            g0 = f
+            for sub, nv, tr in subs:
+                ws.row_dimensions[f].height = 15.6
+                dis = d["diseno3"].get((tp, nv, tr))
+                val = d["valores3"].get((tp, nv, tr))
+                _celda(ws, f, 2, sub, _f(12), _r(BLANCO), borde_col(2), "@", Alignment(horizontal="center",
+                                                                                      vertical="center"))
+                _celda(ws, f, c_dis, (round(dis, 4) if dis is not None else 0) if d["con_diseno"] else None,
+                       _f(12), _r(BLANCO), borde_col(c_dis), NUM)
+                for k, c0 in enumerate([c_ant] + c_sem):
+                    x = val[k] if val else 0.0
+                    _celda(ws, f, c0, round(x, 4) if abs(x) > 1e-9 else None, _f(12), _r(BLANCO), borde_col(c0),
+                           CONT, CENTRO)
+                suma = ",".join(f"{L(c0)}{f}" for c0 in [c_ant] + c_sem)
+                _celda(ws, f, c_pen, f"=+{L(c_dis)}{f}-SUM({suma})" if d["con_diseno"] else None, _f(12), None,
+                       borde_col(c_pen), CONT)
+                f += 1
+            # sector / ubicacion en celda combinada vertical
+            _unir(ws, g0, 1, f - 1, 1, grupo, font=_f(12, True), fill=_r(BLANCO), borde=borde_col(1),
+                  al=Alignment(horizontal="center", vertical="center", wrap_text=True))
+        f_fin = f - 1
+        ws.row_dimensions[f].height = 19.2
+        for c in range(1, ultima_tabla + 1):
+            if c == 1:
+                v = "SUB TOTAL"
+            elif c == 2 or (c <= c_tot and not d["con_diseno"]):
+                v = None
+            elif f_fin >= f_ini:
+                v = f"=SUM({L(c)}{f_ini}:{L(c)}{f_fin})"
+            else:
+                v = 0
+            _celda(ws, f, c, v, _f(12, True), _r(CELESTE), borde_col(c), NUM if c <= c_tot else CONT,
+                   Alignment(horizontal="center" if c == 1 else "right", vertical="center"))
+        _unir(ws, f, 1, f, 2, "SUB TOTAL", font=_f(12, True), fill=_r(CELESTE), borde=borde_col(1),
+              al=Alignment(horizontal="center", vertical="center"))
+        subtotales.append((tit, f))
+        f += 1
+
+    for tp in (d["tipos"] if not vertical else []):
         # titulo del bloque: TIPO | I II | TOTAL | I II | ...
         ws.row_dimensions[f].height = 27
         tit = tp or "ACTIVIDAD"
@@ -462,10 +570,13 @@ def hoja_memoria(wb, p, it, padre, desde, hasta, enc, solo_contractual=False, us
     ws.row_dimensions[f].height = 33.6
     for c in range(1, ultima_tabla + 1):
         L = get_column_letter(c)
-        v = "TOTAL" if c == 1 else (None if (c < c_tot and not d["con_diseno"]) else
+        v = "TOTAL" if c == 1 else (None if ((c < c_tot and not d["con_diseno"]) or (vertical and c == 2)) else
                                     "=" + "+".join(f"{L}{s}" for _, s in subtotales))
         _celda(ws, f, c, v, _f(13, True), _r(CELESTE), borde_col(c, MEDIA), NUM if c <= c_tot else CONT,
                Alignment(horizontal="center" if c == 1 else None, vertical="center", wrap_text=c == 1))
+    if vertical:
+        _unir(ws, f, 1, f, 2, "TOTAL", font=_f(13, True), fill=_r(CELESTE), borde=borde_col(1, MEDIA),
+              al=Alignment(horizontal="center", vertical="center"))
 
     # sin datos fijos: lo pendiente sale de la cantidad total de la partida
     L = get_column_letter
