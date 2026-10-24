@@ -1,0 +1,10 @@
+{
+ "version": "1.3.2",
+ "apk": "ctrlp-1.3.2-arm64-v8a-debug.apk",
+ "sha256": "cdc9df6fc2b4b4909d0d9ab76e16f5e4b529a55a6caff13d7cd4a8d56d49ab92",
+ "tamano": 24686722,
+ "novedades": [
+  "En línea: al escribir la clave y tocar «Aceptar» el proyecto ya se abre (antes se tomaba como si se hubiera cancelado).",
+  "Abrir un proyecto con usuario protegido por contraseña: ya no se cierra el proyecto al aceptar."
+ ]
+}
