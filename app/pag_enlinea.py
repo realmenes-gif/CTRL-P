@@ -50,35 +50,53 @@ class Espera(ui.Dialogo):
         self.dismiss()
 
 
+_EN_CURSO = [None]          # flujo en linea que esta corriendo (uno a la vez)
+
+
 def correr(flujo, al_fallar=None):
     """Ejecuta un flujo (generador). Cada yield es un Red(...) o una funcion f(seguir) que muestra un dialogo y
-    llama seguir(valor) al responder. Los errores de internet se muestran y cortan el flujo."""
-    def paso(valor=None, error=None):
+    llama seguir(valor) al responder. Los errores de internet se muestran y cortan el flujo.
+    Uno a la vez: un segundo toque (por ejemplo dos veces «Abrir») no abre otra ventana encima.
+    Cada respuesta vale una sola vez: un «Aceptar» repetido no hace avanzar el flujo dos veces."""
+    if _EN_CURSO[0] is not None:
+        flujo.close()
+        ui.aviso("Esperá: todavía se está terminando lo anterior.")
+        return
+    _EN_CURSO[0] = flujo
+    turno = [0]
+
+    def terminar():
+        if _EN_CURSO[0] is flujo:
+            _EN_CURSO[0] = None
+
+    def paso(valor=None, error=None, t=None):
+        if t is not None and t != turno[0]:
+            return                          # respuesta repetida o vieja: se ignora
+        turno[0] += 1
+        tk = turno[0]
         try:
             y = flujo.throw(error) if error is not None else flujo.send(valor)
         except StopIteration:
+            terminar()
             return
         except nb.NecesitaSesion as e:
+            terminar()
             ui.info("Google", str(e))
             if al_fallar:
                 al_fallar()
             return
         except nb.ErrorNube as e:
+            terminar()
             nb.anotar(f"Error: {e}")
             ui.info("En línea", str(e))
             if al_fallar:
                 al_fallar()
             return
         except Exception as e:
+            terminar()
             import traceback as _tb
             nb.anotar("Error inesperado:\n" + _tb.format_exc())
             ui.info("En línea", f"Ocurrió un error: {e}")
-            try:
-                import traceback
-                from ctrlp_app import registrar_error
-                registrar_error("En línea", traceback.format_exc())
-            except Exception:
-                pass
             if al_fallar:
                 al_fallar()
             return
@@ -97,14 +115,14 @@ def correr(flujo, al_fallar=None):
             def fin():
                 dlg.cerrar()
                 if "e" in res:
-                    paso(error=res["e"])
+                    paso(error=res["e"], t=tk)
                 else:
-                    paso(res.get("v"))
+                    paso(res.get("v"), t=tk)
             threading.Thread(target=hilo, daemon=True).start()
         elif callable(y):
-            y(lambda v=None: Clock.schedule_once(lambda *_: paso(v), 0))
+            y(lambda v=None: Clock.schedule_once(lambda *_: paso(v, t=tk), 0))
         else:
-            Clock.schedule_once(lambda *_: paso(y), 0)
+            Clock.schedule_once(lambda *_: paso(y, t=tk), 0)
     paso()
 
 
@@ -121,19 +139,31 @@ def pedir_clave(nombre, verif=""):
         respondio = {}
 
         def ok(v):
+            if respondio:
+                return
             respondio["si"] = True
+            nb.anotar("Clave escrita: se cierra la ventana y sigue")
             seguir(v["clave"].strip())
         d = ui.formulario("Clave del proyecto", (f"«{nombre}». " if nombre else "") +
                           "Escribí la clave del proyecto (te la da el administrador). No se guarda en la tablet.",
                           [("clave", "Clave del proyecto", True, "")], ["Cancelar", "Aceptar"], ok, validar=validar)
         # la ventana se cierra ANTES de entregar la clave: se espera un instante para saber si fue «Cancelar»
-        d.bind(on_dismiss=lambda *_: Clock.schedule_once(lambda *_: None if respondio else seguir(None), 0.1))
+        # (ojo: si esta funcion devolviera algo, Kivy NO cierra la ventana)
+        def al_cerrar(*_):
+            Clock.schedule_once(lambda *_: None if respondio else seguir(None), 0.1)
+        d.bind(on_dismiss=al_cerrar)
     return mostrar
 
 
 def avisar(titulo, texto):
     """Para usar con yield: muestra el mensaje y sigue al aceptar."""
-    return lambda seguir: ui.info(titulo, texto, al_cerrar=seguir)
+    def mostrar(seguir):
+        d = ui.info(titulo, texto, al_cerrar=seguir)
+        if d is not None:
+            def al_cerrar(*_):                   # tambien con «Atrás» (sin devolver nada: si no, no se cierra)
+                Clock.schedule_once(lambda *_: seguir(), 0.1)
+            d.bind(on_dismiss=al_cerrar)
+    return mostrar
 
 
 # =========================================================================

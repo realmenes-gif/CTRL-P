@@ -1,8 +1,12 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.3.2"
+VERSION_INTERNA = "1.3.3"
 
 CAMBIOS = [
+    ("1.3.3", [
+        "En línea: la ventana de la clave se cierra al tocar «Aceptar» o «Cancelar» (antes se quedaba en pantalla aunque el proyecto ya se había abierto).",
+        "En línea: un doble toque en «Abrir» o «Aceptar» ya no abre la ventana dos veces.",
+    ]),
     ("1.3.2", [
         "En línea: al escribir la clave y tocar «Aceptar» el proyecto ya se abre (antes se tomaba como si se hubiera cancelado).",
         "Abrir un proyecto con usuario protegido por contraseña: ya no se cierra el proyecto al aceptar.",
