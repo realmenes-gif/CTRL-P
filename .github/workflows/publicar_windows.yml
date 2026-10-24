@@ -67,7 +67,7 @@ jobs:
           NUBE_URL: ${{ secrets.NUBE_URL }}
           NUBE_CLIENTE: ${{ secrets.NUBE_CLIENTE }}
           NUBE_SECRETO: ${{ secrets.NUBE_SECRETO }}
-        run: python -c "import os; open('nube_datos.py','w',encoding='utf-8').write('URL_SERVIDOR = %r\nCLIENT_ID = %r\nCLIENT_SECRET = %r\n' % (os.environ['NUBE_URL'], os.environ['NUBE_CLIENTE'], os.environ['NUBE_SECRETO']))"
+        run: python -c "import os, sys; sys.exit('Faltan los secretos NUBE_*') if not all(os.environ.get(k) for k in ('NUBE_URL', 'NUBE_CLIENTE', 'NUBE_SECRETO')) else None; open('nube_datos.py','w',encoding='utf-8').write('URL_SERVIDOR = %r\nCLIENT_ID = %r\nCLIENT_SECRET = %r\n' % (os.environ['NUBE_URL'], os.environ['NUBE_CLIENTE'], os.environ['NUBE_SECRETO']))"
 
       - name: Armar Ctrl-P.exe
         if: steps.ver.outputs.existe == '0'
