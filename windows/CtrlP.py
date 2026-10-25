@@ -30,12 +30,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.12"
-VERSION_INTERNA = "1.12"
+VERSION = "v1.13"
+VERSION_INTERNA = "1.13"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.13", [
+        "Informes ya no se queda «No responde» al seleccionar una fila de la tabla (las tres partes de la tabla se pasaban la selección entre ellas sin parar).",
+    ]),
     ("v1.12", [
         "Registro de avance: si la partida ya tiene toda su cantidad repartida en Datos fijos, solo se ven las ubicaciones con cantidad asignada (y las que ya tienen avance); el botón «Mostrar todas» las muestra todas.",
     ]),

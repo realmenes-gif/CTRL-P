@@ -1023,7 +1023,9 @@ def tabla_fija(master, izq, centro, der):
             try:
                 sel = tv_origen.selection()
                 for tv in tvs:
-                    if tv is not tv_origen:
+                    # solo si cambia: el evento de seleccion llega DESPUES (cuando _sinc ya se libero) y, si se
+                    # volviera a poner la misma seleccion, las tablas se la pasarian entre ellas sin parar
+                    if tv is not tv_origen and tuple(tv.selection()) != tuple(sel):
                         tv.selection_set(sel)
             finally:
                 arbol._sinc = False

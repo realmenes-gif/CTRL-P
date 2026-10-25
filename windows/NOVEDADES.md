@@ -1,4 +1,8 @@
-## Ctrl-P v1.12 (Windows)
+## Ctrl-P v1.13 (Windows)
+
+- Informes ya no se queda «No responde» al seleccionar una fila de la tabla (las tres partes de la tabla se pasaban la selección entre ellas sin parar).
+
+### Incluye lo de la v1.12
 
 - Registro de avance: si la partida ya tiene toda su cantidad repartida en Datos fijos, solo se ven las ubicaciones con cantidad asignada (y las que ya tienen avance); el botón «Mostrar todas» las muestra todas.
 
