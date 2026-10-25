@@ -330,6 +330,7 @@ class PaginaRegistro(Pagina):
 
         def seguir():
             self.it = it
+            self._ver_todas = False
             self.mostrar()
             if self.arbol_visible and self.panel.width < dp(MIN_UBIC) + dp(820):
                 self._alternar_arbol()
@@ -425,6 +426,23 @@ class PaginaRegistro(Pagina):
             det.append("Por tramos")
         if det:
             t.add_widget(Etiqueta("  ·  ".join(det), 11, color="texto2"))
+        # partida repartida completa en Datos fijos: solo las ubicaciones asignadas (menos scroll)
+        visibles = None if getattr(self, "_ver_todas", False) else p.ubicaciones_registro(iid)
+        if p.ubicaciones_registro(iid) is not None:
+            total_ub = sum(len(g["filas"]) for g in calc.detalle_ubicaciones(iid))
+            fv = Fila(alto=40)
+            if visibles is not None:
+                ocultas = total_ub - len([1 for g in calc.detalle_ubicaciones(iid) for fl in g["filas"]
+                                          if fl["nivel"] in visibles])
+                fv.add_widget(Etiqueta(f"Solo las ubicaciones con cantidad asignada en Datos fijos ({ocultas} ocultas).",
+                                       12, color="texto2"))
+                fv.add_widget(Boton("Mostrar todas", ancho=150, alto=36, tam=13,
+                                    al_tocar=lambda: self._alternar_todas(True)))
+            else:
+                fv.add_widget(Etiqueta("Mostrando todas las ubicaciones.", 12, color="texto2"))
+                fv.add_widget(Boton("Solo las asignadas", ancho=170, alto=36, tam=13,
+                                    al_tocar=lambda: self._alternar_todas(False)))
+            t.add_widget(fv)
         self.panel.add_widget(t)
         # tabla (si no entra a lo ancho, se desliza de lado; la columna Ubicacion nunca queda angosta)
         from kivy.uix.scrollview import ScrollView
@@ -531,7 +549,8 @@ class PaginaRegistro(Pagina):
         self.labels_grupo = {}
         niveles_plegables = []
         for g in calc.detalle_ubicaciones(iid):
-            for fl in g["filas"]:
+            filas_g = [fl for fl in g["filas"] if visibles is None or fl["nivel"] in visibles]
+            for fl in filas_g:
                 nv = fl["nivel"]
                 nombre = g["nombre"] if g["es_area"] else f"{g['nombre']}  {fl['nombre']}"
                 c_nv = fl["contractual"]
@@ -570,7 +589,7 @@ class PaginaRegistro(Pagina):
                 for d in filas[n0:]:
                     d["dentro_de"] = nv
                 niveles_plegables.append((nv, labn, len(filas) - n0, len(keys_nv)))
-            if not g["es_area"] and len(g["filas"]) > 1:
+            if not g["es_area"] and len(filas_g) > 1:
                 self.labels_grupo[g["edificio"]] = resumen(f"Total {g['nombre']}", "subtotal")
         self.label_general = resumen("General", "titulo0")
         # plegar si hay mucho detalle
@@ -800,6 +819,12 @@ class PaginaRegistro(Pagina):
                            ("cant", f"Cantidad del tramo en {self.it['unidad']} (opcional, es su tope de cobro)", False, "")],
                           ["Cancelar", "Crear tramo"], crear)
         self._guardar_antes("Nuevo tramo", form)
+
+    def _alternar_todas(self, si):
+        def seguir():
+            self._ver_todas = si
+            self.mostrar()
+        self._guardar_antes("Mostrar ubicaciones", seguir)
 
     def _guardar_antes(self, titulo, seguir):
         if self.pendientes():

@@ -1,4 +1,8 @@
-## Ctrl-P v1.11 (Windows)
+## Ctrl-P v1.12 (Windows)
+
+- Registro de avance: si la partida ya tiene toda su cantidad repartida en Datos fijos, solo se ven las ubicaciones con cantidad asignada (y las que ya tienen avance); el botón «Mostrar todas» las muestra todas.
+
+### Incluye lo de la v1.11
 
 - Memorias: la vereda va por sector (celda combinada) con el número de cada tramo; las actividades por hitos del formato que todavía no tienen hitos cargados salen igual con los 4 hitos (40/20/25/15) y sus requisitos.
 - Memorias: sin cantidad de diseño, las columnas de diseño y % quedan vacías en vez de 0.

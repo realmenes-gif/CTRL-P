@@ -1030,6 +1030,22 @@ class Proyecto:
                 res.append((it, candidatos[0]["nivel"], candidatos[0]["etiqueta"]))
         return res
 
+    def ubicaciones_registro(self, iid):
+        """Registro de avance: si la cantidad de la partida ya esta repartida completa en Datos fijos, solo hace
+        falta ver las ubicaciones con cantidad asignada (y las que ya tienen avance, equipos, tramos o cantidad
+        por tipo). Devuelve ese conjunto de niveles, o None si se ven todas."""
+        it = self.item(iid)
+        cont = {nv: c for nv, c in self.contractual_de(iid).items() if c and c > EPS}
+        if not cont or sum(cont.values()) < (it["cantidad"] or 0) - 0.005:
+            return None
+        vis = set(cont)
+        vis |= {r[0] for r in self.con.execute("SELECT DISTINCT nivel FROM avances WHERE item=? AND cantidad<>0",
+                                               (iid,))}
+        vis |= {r[0] for r in self.con.execute("SELECT DISTINCT nivel FROM equipos WHERE item=?", (iid,))}
+        vis |= {r[0] for r in self.con.execute("SELECT DISTINCT nivel FROM tramos WHERE item=?", (iid,))}
+        vis |= {nv for (nv, _tp), c in self.cant_tipos_de(iid).items() if c and c > EPS}
+        return vis
+
     def descuadres(self):
         """Partidas cuya suma contractual no coincide con la cantidad de la partida (o la suma de sus
         equipos con el contractual de su nivel)."""

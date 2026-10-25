@@ -30,12 +30,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.11"
-VERSION_INTERNA = "1.11"
+VERSION = "v1.12"
+VERSION_INTERNA = "1.12"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.12", [
+        "Registro de avance: si la partida ya tiene toda su cantidad repartida en Datos fijos, solo se ven las ubicaciones con cantidad asignada (y las que ya tienen avance); el botón «Mostrar todas» las muestra todas.",
+    ]),
     ("v1.11", [
         "Memorias: la vereda va por sector (celda combinada) con el número de cada tramo; las actividades por hitos del formato que todavía no tienen hitos cargados salen igual con los 4 hitos (40/20/25/15) y sus requisitos.",
         "Memorias: sin cantidad de diseño, las columnas de diseño y % quedan vacías en vez de 0.",
@@ -2722,6 +2725,7 @@ class PaginaRegistro(Pagina):
             self.arbol.ver(self.it["id"])
             return
         self.it = it
+        self._ver_todas = False
         self.mostrar()
 
     def pendientes(self):
@@ -2946,8 +2950,29 @@ class PaginaRegistro(Pagina):
             return keys
 
         rangos_nv = []
+        # partida repartida completa en Datos fijos: solo las ubicaciones asignadas (menos scroll)
+        visibles = None if getattr(self, "_ver_todas", False) else p.ubicaciones_registro(iid)
+        grupos_vis = []
         for g in calc.detalle_ubicaciones(iid):
-            for fl in g["filas"]:
+            filas_g = [fl for fl in g["filas"] if visibles is None or fl["nivel"] in visibles]
+            if filas_g:
+                grupos_vis.append((g, filas_g))
+        ocultas = sum(len(g["filas"]) for g in calc.detalle_ubicaciones(iid)) - sum(len(f_) for _g, f_ in grupos_vis)
+        filtro = p.ubicaciones_registro(iid) is not None
+        if filtro:
+            fb = ctk.CTkFrame(cab, fg_color="transparent")
+            fb.grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+            if visibles is not None:
+                etiqueta(fb, f"Solo las ubicaciones con cantidad asignada en Datos fijos ({ocultas} ocultas).", 11,
+                         color="texto2").pack(side="left")
+                boton(fb, "Mostrar todas", ancho=120, command=lambda: self._alternar_todas(True)).pack(side="left",
+                                                                                                padx=(10, 0))
+            else:
+                etiqueta(fb, "Mostrando todas las ubicaciones.", 11, color="texto2").pack(side="left")
+                boton(fb, "Solo las asignadas", ancho=140, command=lambda: self._alternar_todas(False)).pack(
+                    side="left", padx=(10, 0))
+        for g, filas_g in grupos_vis:
+            for fl in filas_g:
                 nv = fl["nivel"]
                 nombre = g["nombre"] if g["es_area"] else f"{g['nombre']}  {fl['nombre']}"
                 c_nv = fl["contractual"]
@@ -2990,7 +3015,7 @@ class PaginaRegistro(Pagina):
                         keys_nv += ks
                 self.cabeceras.append({"lab": labn, "keys": keys_nv, "base": c_nv})
                 rangos_nv.append((nv, nombre, labn[0], r0_nv, self._fila_tab, len(keys_nv)))
-            if not g["es_area"] and len(g["filas"]) > 1:
+            if not g["es_area"] and len(filas_g) > 1:
                 self.labels_grupo[g["edificio"]] = fila_resumen(f"Total {g['nombre']}", col("subtotal"))
         self.label_general = fila_resumen("General", col("titulo0"))
         self._plegar_niveles(tab, iid, rangos_nv, {k[0] for k in hoy})
@@ -3004,6 +3029,12 @@ class PaginaRegistro(Pagina):
     # tramos…) la tabla se pasaba de eso y se veía en blanco. Entonces el detalle de cada nivel se pliega y se
     # abre con un clic en el nombre del nivel; los niveles con avance en la fecha quedan abiertos.
     ALTO_MAX_TABLA = 22000      # px estimados de detalle a partir de los cuales se pliega
+
+    def _alternar_todas(self, si):
+        if self.pendientes() and not self._guardar_antes("Mostrar ubicaciones"):
+            return
+        self._ver_todas = si
+        self.mostrar()
 
     def _plegar_niveles(self, tab, iid, rangos, con_avance):
         self._pliegue = {}

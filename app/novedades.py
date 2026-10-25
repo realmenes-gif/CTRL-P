@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.3.5"
+VERSION_INTERNA = "1.3.6"
 
 CAMBIOS = [
+    ("1.3.6", [
+        "Registro de avance: si la partida ya tiene toda su cantidad repartida en Datos fijos, solo se ven las ubicaciones con cantidad asignada (y las que ya tienen avance); el botón «Mostrar todas» las muestra todas.",
+    ]),
     ("1.3.5", [
         "Actualizaciones: al haber una versión nueva, «Descargar» abre el navegador con el APK; se instala encima tocando el archivo descargado (los proyectos y la sesión se mantienen).",
     ]),
