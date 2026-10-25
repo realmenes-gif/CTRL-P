@@ -40,6 +40,7 @@ const raiz = new Carpeta("Mi unidad");
 const props = {};
 const cache = {};
 let llamadasToken = 0;
+const correos = [];
 
 const contexto = {
   DriveApp: {
@@ -48,6 +49,7 @@ const contexto = {
   },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
   CacheService: { getScriptCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; } }) },
+  MailApp: { sendEmail: (o) => { correos.push({ to: o.to, subject: o.subject, largo: o.body.length, adjuntos: (o.attachments || []).length }); } },
   LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
   ContentService: {
     MimeType: { JSON: "json" },
@@ -87,7 +89,7 @@ http.createServer((req, res) => {
   req.on("end", () => {
     let salida;
     if (req.method === "GET" && req.url.startsWith("/estado")) {
-      salida = JSON.stringify({ llamadasToken, archivos: Object.values(carpetas).reduce((n, c) => n + c.archivos.filter(a => !a.basura).length, 0) });
+      salida = JSON.stringify({ llamadasToken, correos, archivos: Object.values(carpetas).reduce((n, c) => n + c.archivos.filter(a => !a.basura).length, 0) });
     } else if (req.method === "GET") {
       salida = contexto.doGet().texto;
     } else {

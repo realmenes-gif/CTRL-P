@@ -51,6 +51,8 @@ class PaginaDatosFijos(Pagina):
         self.it = None
         self._limpiar_estado()
         self.arbol_visible = True
+        self._ver_todas = False
+        self._visibles = None
 
     def _limpiar_estado(self):
         self.vars, self.vars_tipo = {}, {}
@@ -96,6 +98,7 @@ class PaginaDatosFijos(Pagina):
     def elegir(self, it):
         def seguir():
             self.it = it
+            self._ver_todas = False
             self.mostrar()
             if self.arbol_visible and self.desp.width < dp(700):
                 self._alternar_arbol()
@@ -138,6 +141,16 @@ class PaginaDatosFijos(Pagina):
             if nueva != self.p.ubic_fija_de(self.it["id"]):
                 return True
         return False
+
+    def _alternar_todas(self, si):
+        """Partida repartida completa: ver solo las ubicaciones asignadas o todas (lo escrito se conserva)."""
+        def seguir():
+            self._ver_todas = si
+            self._redibujar()
+        if not si:
+            self.antes_de_salir(seguir)
+        else:
+            seguir()
 
     # ---------------------------------------------------------------- armado
     def _redibujar(self):
@@ -187,11 +200,27 @@ class PaginaDatosFijos(Pagina):
         t.fila("Ubicación fija", self.m_fija,
                "Para presupuestos que ya vienen separados: la partida pertenece a una sola ubicación.")
         self.col.add_widget(t)
+        # partida repartida completa: solo las ubicaciones con cantidad asignada (menos scroll)
+        filtro = None if fija else p.ubicaciones_registro(it["id"])
+        self._visibles = None if self._ver_todas else filtro
         if fija:
             self.col.add_widget(Etiqueta(f"Esta partida pertenece solo a {p.etiqueta_ubicacion(fija)}; su contractual es "
                                          "la cantidad de la partida.", 13, color="texto2"))
         self._mas_detalles(it, bloqueado, fija)
         if not fija:
+            if filtro is not None:
+                fv = Fila(alto=44)
+                if self._visibles is not None:
+                    ocultas = sum(1 for e in p.edificios() for n in p.niveles_de(e["id"]) if n["id"] not in self._visibles)
+                    fv.add_widget(Etiqueta(f"La cantidad ya está repartida completa: solo se ven las ubicaciones "
+                                           f"asignadas ({ocultas} ocultas).", 12, color="texto2"))
+                    fv.add_widget(Boton("Mostrar todas", ancho=150, alto=36, tam=13,
+                                        al_tocar=lambda: self._alternar_todas(True)))
+                else:
+                    fv.add_widget(Etiqueta("Mostrando todas las ubicaciones.", 12, color="texto2"))
+                    fv.add_widget(Boton("Solo las asignadas", ancho=170, alto=36, tam=13,
+                                        al_tocar=lambda: self._alternar_todas(False)))
+                self.col.add_widget(fv)
             self._contractuales(it, cont, bloqueado)
         if bloqueado:
             self.l_estado.text = "Archivo de «Solo agregar avance»: los datos fijos no se pueden modificar."
@@ -206,8 +235,12 @@ class PaginaDatosFijos(Pagina):
         cant_t = self.p.cant_tipos_de(it["id"]) if tipos else {}
         grid = GridLayout(cols=2, spacing=dp(12), size_hint_y=None)
         grid.bind(minimum_height=grid.setter("height"))
+        n_ed = 0
         for e in self.p.edificios():
-            niv = self.p.niveles_de(e["id"])
+            niv = [n for n in self.p.niveles_de(e["id"]) if self._visibles is None or n["id"] in self._visibles]
+            if not niv:
+                continue
+            n_ed += 1
             tt = Tarjeta(relleno=14, espacio=6)
             s = sum(cont.get(n["id"], 0) for n in niv if n["id"] in cont)
             hay = any(n["id"] in cont for n in niv)
@@ -259,7 +292,7 @@ class PaginaDatosFijos(Pagina):
                         x.bind(text=sumar)
                     sumar()
             grid.add_widget(tt)
-        if len(self.p.edificios()) % 2:
+        if n_ed % 2:
             grid.add_widget(Widget(size_hint_y=None, height=0))
         self.col.add_widget(grid)
 
@@ -519,6 +552,8 @@ class PaginaDatosFijos(Pagina):
                 continue
             nv = u["nivel"]
             filas = datos.get(nv, [])
+            if self._visibles is not None and nv not in self._visibles and not filas:
+                continue
             f = Fila(alto=44)
             f.add_widget(Etiqueta(u["etiqueta"], 14, True, ancho_fijo=200))
             suma = sum(x for x in (leer_num(fl[2]) for fl in filas) if isinstance(x, float))

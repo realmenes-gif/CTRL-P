@@ -114,14 +114,23 @@ def _avisador(progreso):
     return aviso
 
 
+def _elegidas(ids, memorias):
+    """memorias: True (todas las del filtro) o el conjunto de partidas que se marcaron en la lista."""
+    if isinstance(memorias, (set, frozenset, list, tuple)):
+        return set(ids) & set(memorias)
+    return ids
+
+
 def exportar_memorias(p, ruta, modo, desde, hasta, filtro="completo", solo_contractual=False, progreso=None,
-                      guardar=None):
-    """Solo las memorias de calculo: una pestaña por actividad del filtro elegido."""
+                      guardar=None, solo=None):
+    """Solo las memorias de calculo: una pestaña por actividad del filtro elegido (o solo las de «solo»)."""
     import ctrlp_memoria as mc
     if modo == "estado":
         desde = hasta
     calc = Calculo(p, desde, hasta, solo_contractual)
     ids = calc.visibles(filtro or "completo")
+    if solo is not None:
+        ids = _elegidas(ids, solo)
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     n = mc.agregar_memorias(wb, p, ids, desde, hasta, solo_contractual, progreso, 0.02, 0.7)
@@ -135,11 +144,16 @@ def exportar_memorias(p, ruta, modo, desde, hasta, filtro="completo", solo_contr
 
 
 def contar_memorias(p, modo, desde, hasta, filtro="completo", solo_contractual=False):
+    return len(lista_memorias(p, modo, desde, hasta, filtro, solo_contractual))
+
+
+def lista_memorias(p, modo, desde, hasta, filtro="completo", solo_contractual=False):
+    """Partidas que llevarian memoria con el filtro elegido, en el orden del presupuesto."""
     if modo == "estado":
         desde = hasta
     calc = Calculo(p, desde, hasta, solo_contractual)
     ids = calc.visibles(filtro or "completo")
-    return sum(1 for it in calc.items if it["tipo"] == "P" and it["id"] in ids)
+    return [it for it in calc.items if it["tipo"] == "P" and it["id"] in ids]
 
 
 def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, filtro="completo",
@@ -394,7 +408,7 @@ def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, fil
     ws.freeze_panes = ws.cell(row=f + 1, column=3)
     if memorias:
         import ctrlp_memoria as mc
-        mc.agregar_memorias(wb, p, vis_ids, desde, hasta, solo_contractual, progreso, 0.68, 0.85)
+        mc.agregar_memorias(wb, p, _elegidas(vis_ids, memorias), desde, hasta, solo_contractual, progreso, 0.68, 0.85)
     if progreso:
         progreso(0.85 if memorias else 0.7, "Guardando el archivo…")
     _guardar(wb, ruta, guardar)
@@ -477,7 +491,8 @@ def exportar_corte(p, ruta, desde, hasta, solo_contractual=False, progreso=None,
     ws.freeze_panes = ws.cell(row=f + 1, column=3)
     if memorias:
         import ctrlp_memoria as mc
-        mc.agregar_memorias(wb, p, calc.visibles(filtro or "completo"), desde, hasta, solo_contractual, progreso,
+        mc.agregar_memorias(wb, p, _elegidas(calc.visibles(filtro or "completo"), memorias), desde, hasta,
+                            solo_contractual, progreso,
                             0.1, 0.7, estimacion=True)
     if progreso:
         progreso(0.7, "Guardando el archivo…")

@@ -30,12 +30,18 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.14"
-VERSION_INTERNA = "1.14"
+VERSION = "v1.15"
+VERSION_INTERNA = "1.15"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.15", [
+        "Datos fijos: si la partida ya tiene toda su cantidad repartida, solo se ven las ubicaciones con cantidad asignada; «Mostrar todas» las muestra todas y «Solo las asignadas» vuelve a ocultarlas.",
+        "Memorias de cálculo y «Corte + memorias»: antes de sacarlas aparece la lista para marcar cuáles van (un clic en la fila). «Quitar las de pago por hitos» las saca de una vez; lo desmarcado se recuerda mientras Ctrl-P esté abierto.",
+        "errores.log se manda solo: cuando aparece un error, Ctrl-P envía lo nuevo del registro al administrador (sin claves ni datos del proyecto), así no hace falta mandarlo a mano.",
+        "Ubicaciones: ya no salen errores «invalid command name …entry» al crear o editar edificios.",
+    ]),
     ("v1.14", [
         "En línea: si Google tarda y responde sin los datos (por ejemplo al abrir un proyecto), Ctrl-P lo reintenta solo una vez y, si sigue igual, avisa con un mensaje claro en vez de dar error.",
     ]),
@@ -1905,6 +1911,8 @@ class PaginaDatosFijos(Pagina):
         self.it = None
         self.vars = {}
         self.hitos_ed, self.tramos_ed, self.equipos_ed = [], {}, {}
+        self._ver_todas = False
+        self._visibles = None
 
     def al_cambiar_tema(self):
         ui.etiquetas_tabla(self.arbol.tv)
@@ -1934,7 +1942,18 @@ class PaginaDatosFijos(Pagina):
         if not self.puede_salir():
             return
         self.it = it
+        self._ver_todas = False
         self.mostrar()
+
+    def _alternar_todas(self, si):
+        """Partida repartida completa: ver solo las ubicaciones asignadas o todas (lo escrito se conserva)."""
+        if not si and self._cambios() and not self.puede_salir():
+            return
+        self._ver_todas = si
+        if si:
+            self._redibujar()
+        else:
+            self.mostrar()
 
     def puede_salir(self):
         if self.it and self._cambios():
@@ -2259,11 +2278,14 @@ class PaginaDatosFijos(Pagina):
         lista.grid(row=1, column=0, columnspan=2, sticky="ew", padx=18, pady=(4, 14))
         fila = 0
         palabra = "equipos" if es_eq else "tramos"
+        vis = getattr(self, "_visibles", None)
         for u in self.p.ubicaciones():
             if fija and u["nivel"] != fija:
                 continue
             nv = u["nivel"]
             filas = datos.get(nv, [])
+            if vis is not None and nv not in vis and not filas:
+                continue
             f = ctk.CTkFrame(lista, fg_color="transparent")
             f.grid(row=fila, column=0, sticky="w", pady=(6, 2))
             fila += 1
@@ -2473,6 +2495,9 @@ class PaginaDatosFijos(Pagina):
             m.configure(state="disabled")
         t.fila("Ubicación fija", m, "Para presupuestos que ya vienen separados: la partida pertenece a una sola ubicación.")
         r = 1
+        # partida repartida completa: solo las ubicaciones con cantidad asignada (menos scroll); «Mostrar todas» las abre
+        filtro = None if fija else self.p.ubicaciones_registro(it["id"])
+        self._visibles = None if self._ver_todas else filtro
         if fija:
             etiqueta(self.panel, f"Esta partida pertenece solo a {self.p.etiqueta_ubicacion(fija)}; su contractual es la "
                                  f"cantidad de la partida.", 12, color="texto2").grid(row=r, column=0, columnspan=2, sticky="w",
@@ -2482,12 +2507,31 @@ class PaginaDatosFijos(Pagina):
         if fija:
             self.v_estado.set("")
             return
+        if filtro is not None:
+            fb = ctk.CTkFrame(self.panel, fg_color="transparent")
+            fb.grid(row=r, column=0, columnspan=2, sticky="w", pady=(0, 10))
+            r += 1
+            if self._visibles is not None:
+                n_tot = sum(len(self.p.niveles_de(e["id"])) for e in self.p.edificios())
+                ocultas = n_tot - sum(1 for e in self.p.edificios() for n in self.p.niveles_de(e["id"])
+                                      if n["id"] in self._visibles)
+                etiqueta(fb, f"La cantidad ya está repartida completa: solo se ven las ubicaciones asignadas "
+                             f"({ocultas} ocultas).", 12, color="texto2").pack(side="left")
+                boton(fb, "Mostrar todas", ancho=120, command=lambda: self._alternar_todas(True)).pack(side="left",
+                                                                                                padx=(10, 0))
+            else:
+                etiqueta(fb, "Mostrando todas las ubicaciones.", 12, color="texto2").pack(side="left")
+                boton(fb, "Solo las asignadas", ancho=140, command=lambda: self._alternar_todas(False)).pack(
+                    side="left", padx=(10, 0))
         # tipos de hito (ej. tres tipos de tabique): cantidad por tipo en cada ubicación; la del nivel es la suma
         tipos = [(tp, hs[0]["id"]) for tp, hs in self.p.tipos_hito(it["id"]) if tp]
         cant_t = self.p.cant_tipos_de(it["id"]) if tipos else {}
         k = 0
         for e in self.p.edificios():
-            niv = self.p.niveles_de(e["id"])
+            niv_todos = self.p.niveles_de(e["id"])
+            niv = [n for n in niv_todos if self._visibles is None or n["id"] in self._visibles]
+            if not niv:
+                continue
             tt = ui.Tarjeta(self.panel)
             tt.grid(row=r + k // 2, column=k % 2, sticky="new", padx=(0 if k % 2 == 0 else 6, 6 if k % 2 == 0 else 0), pady=6)
             k += 1
@@ -2505,7 +2549,7 @@ class PaginaDatosFijos(Pagina):
                 fila.grid(row=j, column=0, columnspan=2, sticky="ew", padx=16,
                           pady=(2, 14) if j == len(niv) else (2, 8 if tipos else 2))
                 fila.grid_columnconfigure(0, weight=1)
-                ln = etiqueta(fila, "Área sin nivel" if self.p.area_simple(e, niv) else core.nombre_nivel(e, n), 13, "bold" if tipos else "normal")
+                ln = etiqueta(fila, "Área sin nivel" if self.p.area_simple(e, niv_todos) else core.nombre_nivel(e, n), 13, "bold" if tipos else "normal")
                 ln.grid(row=0, column=0, sticky="w")
                 en = entrada(fila, v, 130, placeholder_text="Sin asignar", justify="right")
                 en.grid(row=0, column=1, sticky="e")
@@ -4051,25 +4095,24 @@ class PaginaInformes(Pagina):
             return
         if modo == "estado":
             desde = hasta
-        n = xl.contar_memorias(self.p, modo, desde, hasta, self._filtro(), self.v_contr.get())
+        lista = xl.lista_memorias(self.p, modo, desde, hasta, self._filtro(), self.v_contr.get())
+        n = len(lista)
         if not n:
             ui.info(self.app, "Memorias de cálculo", f"No hay actividades con «{self.v_filtro.get()}» en estas fechas.")
             return
         sem = mc.semanas(desde, hasta, self.p.inicio_semana)
-        r = ui.dialogo_texto(
-            self.app, "Memorias de cálculo",
-            f"Una pestaña por cada actividad de «Mostrar: {self.v_filtro.get()}»: {n} actividad"
-            f"{'es' if n != 1 else ''}.\n\nPeríodo del {core.fecha_txt(desde)} al {core.fecha_txt(hasta)} "
-            f"(se incluyen los dos días), {len(sem)} semana{'s' if len(sem) != 1 else ''} "
+        elegido = self._elegir_memorias(
+            "Memorias de cálculo",
+            f"Actividades de «Mostrar: {self.v_filtro.get()}». Período del {core.fecha_txt(desde)} al "
+            f"{core.fecha_txt(hasta)} (se incluyen los dos días), {len(sem)} semana{'s' if len(sem) != 1 else ''} "
             f"de {core.texto_semana(self.p.inicio_semana)}."
-            + ("\nSolo lo contractual: activado." if self.v_contr.get() else "")
-            + ("\n\nSon muchas pestañas: el archivo puede quedar pesado. Con «Mostrar: Con avance» salen menos."
-               if n > 150 else "")
-            + "\n\n«Solo memorias» saca un archivo liviano solo con las memorias. «Informe + memorias» agrega "
-              "las memorias al informe de siempre.",
-            ("Cancelar", "Informe + memorias", "Solo memorias"), 2)
-        if r not in (1, 2):
+            + (" Solo lo contractual: activado." if self.v_contr.get() else "")
+            + "\nUn clic en la fila marca o desmarca la memoria. «Solo memorias» saca un archivo liviano; "
+              "«Informe + memorias» las agrega al informe de siempre.",
+            lista, ("Cancelar", "Informe + memorias", "Solo memorias"), 2)
+        if not elegido:
             return
+        r, solo = elegido
         r += 1                      # 2 = informe + memorias, 3 = solo memorias
         base = os.path.splitext(os.path.basename(self.p.ruta))[0]
         nombre = (f"{base} - Memorias de cálculo {desde} a {hasta}" if r == 3 else
@@ -4082,12 +4125,12 @@ class PaginaInformes(Pagina):
         try:
             if r == 3:
                 xl.exportar_memorias(self.p, ruta, modo, desde, hasta, self._filtro(), self.v_contr.get(),
-                                     progreso=dlg.avanzar, guardar=dlg.guardar_en_fondo)
+                                     progreso=dlg.avanzar, guardar=dlg.guardar_en_fondo, solo=solo)
             else:
                 det = {"+ Por día": "dia", "+ Por semana": "semana"}.get(self.v_det.get(), "")
                 xl.exportar_informe(self.p, ruta, modo, desde, hasta, det, self.visibles, self._filtro(),
                                     self.v_contr.get(), progreso=dlg.avanzar, guardar=dlg.guardar_en_fondo,
-                                    memorias=True)
+                                    memorias=solo)
         except PermissionError:
             dlg.cerrar()
             ui.info(self.app, "Exportar", "No se pudo guardar: el archivo está abierto en Excel. Cerralo y volvé a intentar.")
@@ -4098,6 +4141,17 @@ class PaginaInformes(Pagina):
         dlg.cerrar()
         if ui.preguntar(self.app, "Memorias de cálculo", f"Se guardó:\n{ruta}", si="Abrir", no="Cerrar"):
             abrir_en_sistema(ruta)
+
+    def _elegir_memorias(self, titulo, texto, lista, botones, primario):
+        """Lista para marcar las memorias que se sacan. Lo desmarcado se recuerda mientras Ctrl-P está abierto."""
+        if not hasattr(self, "_mem_fuera"):
+            self._mem_fuera = {}
+        clave = getattr(self.p, "ruta", "")
+        r = DialogoMemorias.elegir(self.app, titulo, texto, lista, self._mem_fuera.get(clave, set()), botones,
+                                   primario)
+        if r:
+            self._mem_fuera[clave] = {it["id"] for it in lista} - r[1]
+        return r
 
     def exportar_corte(self):
         if not self.p:
@@ -4122,6 +4176,15 @@ class PaginaInformes(Pagina):
         if not r:
             return
         con_memorias = bool(n) and r == 1
+        if con_memorias:
+            lista = xl.lista_memorias(self.p, modo, desde, hasta, self._filtro(), self.v_contr.get())
+            elegido = self._elegir_memorias(
+                "Memorias del corte",
+                "Memorias que van con el corte (una sola columna «ESTE PERÍODO»). Un clic en la fila la marca o "
+                "la desmarca.", lista, ("Cancelar", "Sacar el corte"), 1)
+            if not elegido:
+                return
+            con_memorias = elegido[1]
         base = os.path.splitext(os.path.basename(self.p.ruta))[0]
         ruta = filedialog.asksaveasfilename(title="Corte de estimación", defaultextension=".xlsx",
                                             initialfile=(f"{base} - Corte de estimación del día {hasta}"
@@ -4134,7 +4197,7 @@ class PaginaInformes(Pagina):
         dlg = DialogoProgreso(self.app, "Corte de estimación", "Preparando el corte…")
         try:
             xl.exportar_corte(self.p, ruta, desde, hasta, self.v_contr.get(), progreso=dlg.avanzar,
-                              guardar=dlg.guardar_en_fondo, memorias=con_memorias, filtro=self._filtro())
+                              guardar=dlg.guardar_en_fondo, memorias=con_memorias or False, filtro=self._filtro())
         except PermissionError:
             dlg.cerrar()
             ui.info(self.app, "Exportar", "No se pudo guardar: el archivo está abierto en Excel. Cerralo y volvé a intentar.")
@@ -6662,6 +6725,139 @@ class DialogoImportacion(Ventana):
         ui.info(self.app, "Importación aplicada", "Los cambios recibidos se incorporaron al proyecto.")
 
 
+class DialogoMemorias(Ventana):
+    """Lista de las memorias que se van a sacar: un clic en la fila la marca o la desmarca.
+    Devuelve (indice del boton, conjunto de partidas marcadas) o None si se cancela."""
+
+    SI, NO = "☑", "☐"
+
+    def __init__(self, app, titulo, texto, items, fuera, botones, primario):
+        super().__init__(app, titulo, 940, 680)
+        import ctrlp_formatos as fm
+        self.res = None
+        self.items = items
+        self.tipo = {}
+        for it in items:
+            try:
+                pl_ = fm.plantilla_de(app.p, it)
+            except Exception:
+                pl_ = None
+            self.tipo[it["id"]] = ("Pago por hitos" if pl_ and pl_[0] == "hitos" else
+                                   "Formato propio" if pl_ else "General")
+        self.marcadas = {it["id"] for it in items if it["id"] not in fuera}
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(3, weight=1)
+        etiqueta(self, titulo, 20, "bold").grid(row=0, column=0, sticky="w", padx=28, pady=(20, 4))
+        lt = etiqueta(self, texto, 12, color="texto2", justify="left", wraplength=860)
+        lt.grid(row=1, column=0, sticky="w", padx=28)
+        barra = ctk.CTkFrame(self, fg_color="transparent")
+        barra.grid(row=2, column=0, sticky="ew", padx=28, pady=(12, 8))
+        boton(barra, "Marcar todas", ancho=120, command=lambda: self._poner(True)).pack(side="left")
+        boton(barra, "Desmarcar todas", ancho=130, command=lambda: self._poner(False)).pack(side="left", padx=8)
+        self.b_hitos = boton(barra, "", ancho=230, command=self._hitos)
+        if any(t == "Pago por hitos" for t in self.tipo.values()):
+            self.b_hitos.pack(side="left")
+        self.v_buscar = tk.StringVar()
+        self.v_buscar.trace_add("write", lambda *_: self._cargar())
+        entrada(barra, self.v_buscar, 200).pack(side="right")
+        etiqueta(barra, "Buscar", 12, color="texto2").pack(side="right", padx=(0, 8))
+        cols = [("ok", "", 46, "center"), ("codigo", "Código", 100, "w"), ("descripcion", "Actividad", 520, "w"),
+                ("tipo", "Memoria", 140, "w")]
+        marco, self.tv = ui.tabla(self, cols, arbol=False)
+        marco.grid(row=3, column=0, sticky="nsew", padx=28)
+        self.tv.configure(selectmode="none")
+        self.tv.bind("<Button-1>", self._clic)
+        self.tv.bind("<space>", self._clic)
+        pie = ctk.CTkFrame(self, fg_color=C["tarjeta"], corner_radius=0)
+        pie.grid(row=4, column=0, sticky="ew", pady=(14, 0))
+        self.v_cuenta = tk.StringVar()
+        etiqueta(pie, "", 13, "bold", textvariable=self.v_cuenta).pack(side="left", padx=28, pady=16)
+        self.botones = []
+        for k in reversed(range(len(botones))):
+            if k == 0:
+                b = boton(pie, botones[k], ancho=110, command=self.destroy)
+            else:
+                b = boton(pie, botones[k], primario=(k == primario), ancho=max(130, 9 * len(botones[k])),
+                          command=lambda k=k: self._listo(k))
+                self.botones.append(b)
+            b.pack(side="right", padx=(8, 28 if k == len(botones) - 1 else 0), pady=16)
+        self.bind("<Escape>", lambda _: self.destroy())
+        self._cargar()
+
+    def _cargar(self):
+        q = core.mayus(self.v_buscar.get().strip()) if hasattr(self, "v_buscar") else ""
+        self.tv.delete(*self.tv.get_children())
+        for it in self.items:
+            if q and q not in core.mayus(f"{it['codigo']} {it['descripcion']}"):
+                continue
+            self.tv.insert("", "end", iid=str(it["id"]), values=(
+                self.SI if it["id"] in self.marcadas else self.NO, it["codigo"], it["descripcion"],
+                self.tipo[it["id"]]))
+        self._contar()
+
+    def _contar(self):
+        n = len(self.marcadas)
+        self.v_cuenta.set(f"{n} de {len(self.items)} memorias marcadas")
+        hitos = [i for i, t in self.tipo.items() if t == "Pago por hitos"]
+        self._con_hitos = any(i in self.marcadas for i in hitos)
+        self.b_hitos.configure(text="Quitar las de pago por hitos" if self._con_hitos else
+                               "Poner las de pago por hitos")
+        for b in self.botones:
+            b.configure(state="normal" if n else "disabled")
+
+    def _id(self, iid):
+        return next((it["id"] for it in self.items if str(it["id"]) == iid), None)
+
+    def _clic(self, ev):
+        boton_ = ev.type == tk.EventType.ButtonPress
+        if boton_ and self.tv.identify_region(ev.x, ev.y) == "heading":
+            return
+        iid = self.tv.identify_row(ev.y) if boton_ else self.tv.focus()
+        if not iid:
+            return
+        i = self._id(iid)
+        if i is None:
+            return
+        if i in self.marcadas:
+            self.marcadas.discard(i)
+        else:
+            self.marcadas.add(i)
+        vals = list(self.tv.item(iid, "values"))
+        vals[0] = self.SI if i in self.marcadas else self.NO
+        self.tv.item(iid, values=vals)
+        self.tv.focus(iid)
+        self._contar()
+        return "break"
+
+    def _poner(self, si):
+        vis = {self._id(x) for x in self.tv.get_children()}
+        if si:
+            self.marcadas |= vis
+        else:
+            self.marcadas -= vis
+        self._cargar()
+
+    def _hitos(self):
+        hitos = {i for i, t in self.tipo.items() if t == "Pago por hitos"}
+        if self._con_hitos:
+            self.marcadas -= hitos
+        else:
+            self.marcadas |= hitos
+        self._cargar()
+
+    def _listo(self, k):
+        if not self.marcadas:
+            return
+        self.res = (k, set(self.marcadas))
+        self.destroy()
+
+    @classmethod
+    def elegir(cls, app, *a):
+        d = cls(app, *a)
+        app.wait_window(d)
+        return d.res
+
+
 class DialogoSugerencias(Ventana):
     def __init__(self, app, sug, al_terminar):
         super().__init__(app, "Sugerir ubicaciones", 900, 600)
@@ -7097,6 +7293,25 @@ def autoprueba(app, ruta, log):
             if not os.path.getsize(destino):
                 raise RuntimeError("Excel vacío")
         import openpyxl
+        # lista de memorias: se arma de verdad, se marca/desmarca y se elige un subconjunto
+        modo_, desde_, hasta_ = pg._rango()
+        lista_ = xl.lista_memorias(app.p, modo_, desde_, hasta_, pg._filtro(), pg.v_contr.get())
+        dm = DialogoMemorias(app, "Memorias", "prueba", lista_, set(), ("Cancelar", "A", "B"), 2)
+        dm._poner(False)
+        dm._poner(True)
+        dm._hitos()
+        dm._hitos()
+        dm.v_buscar.set("zzzz-no-existe")
+        dm.v_buscar.set("")
+        if len(lista_) > 1:
+            dm.marcadas.discard(lista_[0]["id"])
+        dm._listo(2)
+        if not dm.res or dm.res[0] != 2 or len(dm.res[1]) != max(1, len(lista_) - 1):
+            raise RuntimeError(f"Lista de memorias: {dm.res}")
+        elegidas_ = dm.res[1]
+        n_esperado = len(elegidas_)
+        DialogoMemorias.elegir = classmethod(lambda cls, app_, t, tx, items, fuera, bot, pri:
+                                             (len(bot) - 1 if len(bot) == 2 else eleccion, set(elegidas_)))
         for eleccion in (2, 1):                 # solo el corte / corte + memorias (columna ESTE PERÍODO)
             destino = os.path.join(d, f"corte_{eleccion}.xlsx")
             filedialog.asksaveasfilename = lambda *a, **k: destino
@@ -7119,6 +7334,8 @@ def autoprueba(app, ruta, log):
             hojas = openpyxl.load_workbook(destino, read_only=True).sheetnames
             if not any(h.startswith("M.C ") for h in hojas):
                 raise RuntimeError(f"Sin memorias de cálculo: {hojas}")
+            if eleccion == 2 and len([h for h in hojas if h.startswith("M.C ")]) != n_esperado:
+                raise RuntimeError(f"Memorias elegidas: {n_esperado}, salieron {hojas}")
 
     @paso
     def salir():
@@ -7181,6 +7398,8 @@ def main():
     try:
         app = App(archivo)
         vigilante(app)
+        if not prueba:
+            nb.vigilar_registro(RUTA_LOG, VERSION, "Windows")     # errores.log llega solo al administrador
         if prueba:
             autoprueba(app, prueba, os.environ.get("CTRLP_AUTOPRUEBA_LOG") or os.path.join(carpeta, "autoprueba.log"))
         elif cierre_inesperado:

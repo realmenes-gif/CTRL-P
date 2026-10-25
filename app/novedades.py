@@ -1,8 +1,12 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.3.7"
+VERSION_INTERNA = "1.3.8"
 
 CAMBIOS = [
+    ("1.3.8", [
+        "Datos fijos: si la partida ya tiene toda su cantidad repartida, solo se ven las ubicaciones con cantidad asignada; «Mostrar todas» las muestra todas.",
+        "errores.log se manda solo al administrador cuando aparece un error (sin claves ni datos del proyecto).",
+    ]),
     ("1.3.7", [
         "En línea: si Google tarda y responde sin los datos (por ejemplo al abrir un proyecto), Ctrl-P lo reintenta solo una vez y, si sigue igual, avisa con un mensaje claro en vez de dar error.",
     ]),

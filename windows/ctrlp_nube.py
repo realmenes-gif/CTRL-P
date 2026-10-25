@@ -689,3 +689,117 @@ def rebasar(p_local, base_vieja, base_nueva, desde_local=""):
         except Exception:
             pass
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ---------------------------------------------------------------- envio automatico de errores.log
+# Lo nuevo de errores.log que trae errores se manda solo al servidor de Google del administrador (queda en su
+# Drive y le llega por correo), para poder revisarlo sin que nadie tenga que mandar el archivo. No lleva
+# claves ni datos del proyecto: solo lo que ya dice errores.log.
+MARCAS_ERROR = ("· Error", "· No responde", "respondió sin", "Error fatal")
+MAX_ENVIO = 150_000
+_REG_CANDADO = threading.Lock()
+
+
+def _hay_error(texto):
+    return any(ln.startswith("=====") and any(m in ln for m in MARCAS_ERROR) for ln in texto.splitlines()) or \
+        any(m in texto for m in ("respondió sin",))
+
+
+def enviar_registro(ruta_log, version="", plataforma="", equipo=""):
+    """Manda lo nuevo de errores.log si trae algún error. True: se mandó; False: no había nada que mandar;
+    None: no se pudo (sin internet…), se intenta la próxima vez. Nunca lanza errores."""
+    if not ruta_log or not url_servidor():
+        return False
+    if not _REG_CANDADO.acquire(blocking=False):
+        return None
+    try:
+        marca = ruta_log
+        try:
+            tam = os.path.getsize(ruta_log)
+        except OSError:
+            return False
+        desde = _leer_marcas().get(os.path.abspath(ruta_log))
+        if not isinstance(desde, int):
+            desde = max(0, tam - MAX_ENVIO)       # la primera vez: solo lo ultimo
+        if desde > tam:                           # el registro se renovo (quedo en .anterior)
+            desde = 0
+        if desde == tam:
+            return False
+        with open(ruta_log, "rb") as f:
+            f.seek(max(desde, tam - MAX_ENVIO))
+            texto = f.read(tam - max(desde, tam - MAX_ENVIO)).decode("utf-8", "replace")
+        if not _hay_error(texto):
+            _poner_marca(marca, tam)
+            return False
+        token = ""
+        try:
+            if SESION.tiene_sesion():
+                token = SESION.token()
+        except Exception:
+            token = ""
+        if not equipo:
+            import platform
+            equipo = platform.node() or "equipo"
+        cuerpo = json.dumps({"accion": "registro", "id_token": token, "equipo": equipo[:60],
+                             "version": str(version)[:30], "plataforma": plataforma[:30],
+                             "texto": texto}).encode("utf-8")
+        req = urllib.request.Request(url_servidor(), data=cuerpo, headers={"Content-Type": "application/json",
+                                                                           "User-Agent": "Ctrl-P"})
+        try:
+            ctx = globals().get("_ctx")
+            kw = {"context": ctx()} if ctx else {}
+            with urllib.request.urlopen(req, timeout=40, **kw) as r:
+                d = json.loads(r.read().decode("utf-8"))
+        except Exception:
+            return None
+        if d.get("ok"):
+            _poner_marca(marca, tam)
+            return True
+        return None
+    except Exception:
+        return None
+    finally:
+        _REG_CANDADO.release()
+
+
+def _ruta_marcas():
+    return os.path.join(core.carpeta_config(), "registro_enviado.json")
+
+
+def _leer_marcas():
+    try:
+        with open(_ruta_marcas(), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _poner_marca(ruta_log, tam):
+    """Hasta dónde ya se mandó cada errores.log (queda en la carpeta interna de Ctrl-P, no junto al registro)."""
+    d = _leer_marcas()
+    d[os.path.abspath(ruta_log)] = tam
+    try:
+        with open(_ruta_marcas(), "w", encoding="utf-8") as f:
+            json.dump(d, f)
+    except OSError:
+        pass
+
+
+def vigilar_registro(ruta_log, version="", plataforma="", cada=120, primera=25):
+    """Hilo de fondo: a los «primera» segundos y luego cada «cada» segundos, si errores.log cambió, manda lo nuevo."""
+    def bucle():
+        visto = None
+        time.sleep(primera)
+        while True:
+            try:
+                r = ruta_log() if callable(ruta_log) else ruta_log
+                m = (os.path.getmtime(r), os.path.getsize(r)) if r and os.path.exists(r) else None
+                if m and m != visto and enviar_registro(r, version, plataforma) is not None:
+                    visto = m
+            except Exception:
+                pass
+            time.sleep(cada)
+    h = threading.Thread(target=bucle, name="registro", daemon=True)
+    h.start()
+    return h

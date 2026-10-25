@@ -16,6 +16,29 @@ from tkinter import ttk
 import customtkinter as ctk
 from PIL import Image, ImageDraw
 
+
+def _blindar_entry():
+    """Si una casilla ya se cerro pero su variable sigue viva, CTkEntry intentaba leerla y daba
+    «invalid command name ...!entry». Ahora la casilla cerrada suelta la variable sin error."""
+    original = ctk.CTkEntry._textvariable_callback
+
+    def seguro(self, *a):
+        try:
+            if not self._entry.winfo_exists():
+                raise tk.TclError("cerrada")
+            return original(self, *a)
+        except tk.TclError:
+            try:
+                if self._textvariable is not None and self._textvariable_callback_name:
+                    self._textvariable.trace_remove("write", self._textvariable_callback_name)
+                    self._textvariable_callback_name = ""
+            except (tk.TclError, AttributeError):
+                pass
+    ctk.CTkEntry._textvariable_callback = seguro
+
+
+_blindar_entry()
+
 # Paleta: (claro, oscuro)
 C = {
     "lat_ini": ("#EEF2F7", "#272D36"), "lat_fin": ("#D6DFEA", "#1D2229"), "lat_sel": ("#C3CFDF", "#353F4C"),
@@ -510,10 +533,22 @@ def entrada_mayus(master, var, ancho=200, **kw):
     def subir(*_):
         v = var.get()
         if v != v.upper():
-            pos = e.index(tk.INSERT)
+            try:
+                pos = e.index(tk.INSERT)
+            except tk.TclError:
+                pos = None
             var.set(v.upper())
-            e.icursor(pos)
-    var.trace_add("write", subir)
+            if pos is not None:
+                e.icursor(pos)
+    nombre = var.trace_add("write", subir)
+
+    def soltar(ev):
+        if ev.widget is e._entry:
+            try:
+                var.trace_remove("write", nombre)
+            except tk.TclError:
+                pass
+    e._entry.bind("<Destroy>", soltar, add="+")
     return e
 
 

@@ -379,6 +379,11 @@ class CtrlPApp(App):
         self.cfg = core.leer_config()
         RUTA_LOG = os.path.join(core.carpeta_config(), "errores.log")
         ExceptionManager.add_handler(_Errores())
+        try:                            # errores.log llega solo al administrador (lo nuevo que traiga errores)
+            import ctrlp_nube as _nb
+            _nb.vigilar_registro(ruta_log, novedades.VERSION_INTERNA, "Android")
+        except Exception:
+            pass
         ARRANQUE("build: tema y ventana")
         self.usuario = None
         self.con_clave = False

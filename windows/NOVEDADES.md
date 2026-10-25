@@ -1,4 +1,11 @@
-## Ctrl-P v1.14 (Windows)
+## Ctrl-P v1.15 (Windows)
+
+- Datos fijos: si la partida ya tiene toda su cantidad repartida, solo se ven las ubicaciones con cantidad asignada; «Mostrar todas» las muestra todas y «Solo las asignadas» vuelve a ocultarlas.
+- Memorias de cálculo y «Corte + memorias»: antes de sacarlas aparece la lista para marcar cuáles van (un clic en la fila). «Quitar las de pago por hitos» las saca de una vez; lo desmarcado se recuerda mientras Ctrl-P esté abierto.
+- errores.log se manda solo: cuando aparece un error, Ctrl-P envía lo nuevo del registro al administrador (sin claves ni datos del proyecto), así no hace falta mandarlo a mano.
+- Ubicaciones: ya no salen errores «invalid command name …entry» al crear o editar edificios.
+
+### Incluye lo de la v1.14
 
 - En línea: si Google tarda y responde sin los datos (por ejemplo al abrir un proyecto), Ctrl-P lo reintenta solo una vez y, si sigue igual, avisa con un mensaje claro en vez de dar error.
 
