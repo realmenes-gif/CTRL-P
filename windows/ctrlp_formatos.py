@@ -614,7 +614,7 @@ def hoja_tabla(wb, p, it, desde, hasta, enc, pl, solo_contractual=False, usados=
             if estimacion:
                 return nom["per"]
             d0, d1 = cortes[k]
-            return f"{nom['per']}\nSEMANA {M.texto_rango(d0, d1)}"
+            return M.semana_corta(d0, d1)
         return titulos.get(cl, "")
 
     ws.row_dimensions[f].height = 42
@@ -882,7 +882,7 @@ def hoja_hitos(wb, p, it, desde, hasta, enc, solo_contractual=False, usados=None
     M._unir(ws, f, c_pct, f, c_pct, "PORCENTAJE", **th)
     M._unir(ws, f, c_ant, f, c_ant, "ANTERIOR", **th)
     for k, c in enumerate(c_sem):
-        M._unir(ws, f, c, f, c, "ESTE PERÍODO" if estimacion else "SEMANA\n" + M.texto_rango(*cortes[k]), **th)
+        M._unir(ws, f, c, f, c, "ESTE PERÍODO" if estimacion else M.semana_corta(*cortes[k]), **th)
     M._unir(ws, f, c_acu, f, c_acu, "ACUMULADO", **th)
     M._unir(ws, f, c_pen, f, c_pen, "PENDIENTE", **th)
     f += 1
@@ -927,7 +927,7 @@ def hoja_hitos(wb, p, it, desde, hasta, enc, solo_contractual=False, usados=None
     M._unir(ws, f, c_pct, f, c_pct, "CANTIDAD CONTRACTUAL", **th)
     M._unir(ws, f, c_ant, f, c_ant, "ANTERIOR", **th)
     for k, c in enumerate(c_sem):
-        M._unir(ws, f, c, f, c, "ESTE PERÍODO" if estimacion else "SEMANA\n" + M.texto_rango(*cortes[k]), **th)
+        M._unir(ws, f, c, f, c, "ESTE PERÍODO" if estimacion else M.semana_corta(*cortes[k]), **th)
     M._unir(ws, f, c_acu, f, c_acu, "ACUMULADO", **th)
     M._unir(ws, f, c_pen, f, c_pen, "PENDIENTE", **th)
     f += 1

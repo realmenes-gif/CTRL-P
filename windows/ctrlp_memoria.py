@@ -94,6 +94,16 @@ def texto_rango(d0, d1, mayus=True):
     return f"{d0.day}{al}{d1.day}{de}{_mes(d0.month, mayus)}"
 
 
+def semana_corta(d0, d1):
+    """«SEM 04 AL 10 SEP» / «SEM 28 AGO AL 03 SEP»: cabe en las columnas angostas de los formatos."""
+    m0, m1 = _mes(d0.month)[:3], _mes(d1.month)[:3]
+    if d0 == d1:
+        return f"SEM {d0.day:02d} {m0}"
+    if (d0.year, d0.month) == (d1.year, d1.month):
+        return f"SEM {d0.day:02d} AL {d1.day:02d} {m0}"
+    return f"SEM {d0.day:02d} {m0} AL {d1.day:02d} {m1}"
+
+
 def semanas(desde, hasta, inicio=0):
     """Cortes semanales segun el dia en que empieza la semana del proyecto (0 = lunes … 6 = domingo),
     incluidos el primer y el ultimo dia del periodo."""

@@ -1,4 +1,8 @@
-## Ctrl-P v1.15 (Windows)
+## Ctrl-P v1.16 (Windows)
+
+- Memorias con formato propio: cada semana dice solo «SEM 04 AL 10 SEP» (o «SEM 28 AGO AL 03 SEP»), así se lee completo en la columna; antes el título largo quedaba cortado y parecía decir «EJECUTADO ESTE PERÍODO».
+
+### Incluye lo de la v1.15
 
 - Datos fijos: si la partida ya tiene toda su cantidad repartida, solo se ven las ubicaciones con cantidad asignada; «Mostrar todas» las muestra todas y «Solo las asignadas» vuelve a ocultarlas.
 - Memorias de cálculo y «Corte + memorias»: antes de sacarlas aparece la lista para marcar cuáles van (un clic en la fila). «Quitar las de pago por hitos» las saca de una vez; lo desmarcado se recuerda mientras Ctrl-P esté abierto.

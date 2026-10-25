@@ -30,12 +30,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.15"
-VERSION_INTERNA = "1.15"
+VERSION = "v1.16"
+VERSION_INTERNA = "1.16"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.16", [
+        "Memorias con formato propio: cada semana dice solo «SEM 04 AL 10 SEP» (o «SEM 28 AGO AL 03 SEP»), así se lee completo en la columna; antes el título largo quedaba cortado y parecía decir «EJECUTADO ESTE PERÍODO».",
+    ]),
     ("v1.15", [
         "Datos fijos: si la partida ya tiene toda su cantidad repartida, solo se ven las ubicaciones con cantidad asignada; «Mostrar todas» las muestra todas y «Solo las asignadas» vuelve a ocultarlas.",
         "Memorias de cálculo y «Corte + memorias»: antes de sacarlas aparece la lista para marcar cuáles van (un clic en la fila). «Quitar las de pago por hitos» las saca de una vez; lo desmarcado se recuerda mientras Ctrl-P esté abierto.",
