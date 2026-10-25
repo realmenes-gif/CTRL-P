@@ -30,12 +30,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.13"
-VERSION_INTERNA = "1.13"
+VERSION = "v1.14"
+VERSION_INTERNA = "1.14"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.14", [
+        "En línea: si Google tarda y responde sin los datos (por ejemplo al abrir un proyecto), Ctrl-P lo reintenta solo una vez y, si sigue igual, avisa con un mensaje claro en vez de dar error.",
+    ]),
     ("v1.13", [
         "Informes ya no se queda «No responde» al seleccionar una fila de la tabla (las tres partes de la tabla se pasaban la selección entre ellas sin parar).",
     ]),

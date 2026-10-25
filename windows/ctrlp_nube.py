@@ -314,7 +314,28 @@ def anotar(texto):
         pass
 
 
+# lo que tiene que traer cada respuesta (si falta, Google devolvio otra cosa: se reintenta o se avisa)
+ESPERADO = {"bajar": "datos", "envio_datos": "datos", "proyectos": "proyectos", "accesos": "accesos",
+            "envios": "envios", "mis_envios": "envios", "subir": "version", "enviar": "envio"}
+LECTURAS = ("bajar", "envio_datos", "proyectos", "accesos", "envios", "version", "quien")
+
+
 def llamar(accion, timeout=60, **datos):
+    """Llama al servidor y comprueba que la respuesta traiga lo pedido; las consultas se reintentan una vez."""
+    for intento in (1, 2):
+        d = _llamar(accion, timeout, **datos)
+        clave = ESPERADO.get(accion)
+        if not clave or clave in d:
+            return d
+        anotar(f"{accion}: Google respondió sin «{clave}» (intento {intento}): "
+               + ", ".join(sorted(k for k in d if k != "datos"))[:200])
+        if accion not in LECTURAS:
+            break
+    raise ErrorNube("Google respondió, pero sin los datos pedidos (suele pasar cuando tarda mucho). "
+                    "Probá de nuevo en un momento.")
+
+
+def _llamar(accion, timeout=60, **datos):
     """Llama al servidor. Devuelve el diccionario de respuesta o lanza ErrorNube."""
     if not url_servidor():
         raise ErrorNube("Ctrl-P en línea todavía no está configurado (falta el servidor de Google).")

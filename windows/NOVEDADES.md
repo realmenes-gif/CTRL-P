@@ -1,4 +1,8 @@
-## Ctrl-P v1.13 (Windows)
+## Ctrl-P v1.14 (Windows)
+
+- En línea: si Google tarda y responde sin los datos (por ejemplo al abrir un proyecto), Ctrl-P lo reintenta solo una vez y, si sigue igual, avisa con un mensaje claro en vez de dar error.
+
+### Incluye lo de la v1.13
 
 - Informes ya no se queda «No responde» al seleccionar una fila de la tabla (las tres partes de la tabla se pasaban la selección entre ellas sin parar).
 
