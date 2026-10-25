@@ -350,7 +350,10 @@ class PaginaEnLinea(Pagina):
                 except Exception:
                     ya = None
                 if ya and ya["proyecto"] == pr["id"] and os.path.isfile(nb.ruta_base(pr["id"])):
-                    self.app.abrir_proyecto(ruta)           # ya lo tenías: se abre (y se sincroniza desde aquí)
+                    self.app.abrir_proyecto(ruta)           # ya lo tenías: se abre
+                    if pr["version"] > ya["version"]:       # y se trae lo nuevo que aprobó el administrador
+                        nb.anotar(f"Abrir: en Google v{pr['version']}, local v{ya['version']}: trayendo lo nuevo")
+                        Clock.schedule_once(lambda *_: self._traer_al_abrir(pr["id"]), 0.8)
                     return
                 if not (ya and ya["proyecto"] == pr["id"]):
                     ruta = os.path.join(nb.carpeta_en_linea(), f"{nombre} ({pr['id'][:6]}){core.EXT}")
@@ -379,6 +382,14 @@ class PaginaEnLinea(Pagina):
     def sincronizar(self):
         correr(self._sincronizar(), self.refrescar)
 
+    def _traer_al_abrir(self, pid, intentos=90):
+        """Después de abrir (puede pedir la contraseña del usuario), trae la versión nueva sin enviar nada."""
+        v = nb.vinculo(self.p) if self.p is not None else None
+        if v and v["proyecto"] == pid:
+            correr(self._sincronizar(solo_traer=True), self.refrescar)
+        elif intentos > 0:
+            Clock.schedule_once(lambda *_: self._traer_al_abrir(pid, intentos - 1), 1)
+
     def _reabrir(self, ruta, escribir):
         """Para usar con yield: cierra el proyecto, escribe los archivos y lo vuelve a abrir."""
         def hacer(seguir):
@@ -389,7 +400,8 @@ class PaginaEnLinea(Pagina):
             self.app.cerrar_proyecto(cerrado)
         return hacer
 
-    def _sincronizar(self):
+    def _sincronizar(self, solo_traer=False):
+        """solo_traer: al abrir, trae lo nuevo que aprobó el administrador sin enviar nada todavía."""
         p = self.p
         v = nb.vinculo(p) if p else None
         if not v:
@@ -413,10 +425,18 @@ class PaginaEnLinea(Pagina):
             return
         if p.sucio:
             self.app.guardar()
-        me = yield Red("Consultando tus envíos…", lambda: nb.llamar("mis_envios", proyecto=pid, marcar_vistos=True))
+        me = yield Red("Consultando tus envíos…", lambda: nb.llamar("mis_envios", proyecto=pid,
+                                                                    marcar_vistos=not solo_traer))
         avisos = me.get("avisos", [])
         pendiente_srv = any(x["estado"] == "pendiente" for x in me.get("envios", []))
         mensajes = []
+        if solo_traer and pr["version"] <= v["version"]:
+            return
+        if solo_traer and pendiente_srv:
+            yield avisar("En línea", f"En Google hay una versión más nueva (v{pr['version']}), pero tu envío anterior "
+                                     "todavía espera la aprobación del administrador. La recibís al sincronizar cuando "
+                                     "lo resuelva.")
+            return
         # 1) traer lo aprobado (si no espera respuesta de un envio)
         if pr["version"] > v["version"] and not pendiente_srv:
             r = yield Red("Bajando la versión nueva…", lambda: nb.llamar("bajar", proyecto=pid, timeout=180))
@@ -443,6 +463,12 @@ class PaginaEnLinea(Pagina):
                 return
             v = nb.vinculo(p)
             mensajes.append(f"Recibiste la versión v{r['version']} con lo que aprobó el administrador.")
+        if solo_traer:
+            if self.app.pagina == self.clave:
+                self.refrescar()
+            yield avisar("En línea", "\n\n".join(mensajes + ["Tus avances sin enviar se mantienen; se envían con "
+                                                             "«Sincronizar ahora»."]))
+            return
         # 2) enviar lo propio
         with open(base_ruta, "rb") as f:
             base = f.read()

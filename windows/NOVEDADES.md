@@ -1,4 +1,12 @@
-## Ctrl-P v1.16 (Windows)
+## Ctrl-P v1.17 (Windows)
+
+- En línea: «Abrir» desde la lista siempre trae la última versión de Google. Si la copia de esta computadora es más vieja se baja la nueva; si además tiene cambios sin subir, pregunta cuál abrir y la otra queda guardada como copia (no se pierde nada).
+- En línea (administrador): botón «Reemplazar la de Google…» para que el archivo abierto pase a ser la versión en línea (por ejemplo si lo editaste sin internet o abriste una copia local). La anterior queda guardada en Google.
+- En línea (administrador): al sincronizar, si en Google hay una versión más nueva que la abierta, pregunta: «Abrir la de Google» o «Reemplazarla con la mía» (antes daba error).
+- En línea (usuarios): al abrir el proyecto desde la lista se trae solo lo nuevo que aprobó el administrador; sus avances sin enviar se mantienen.
+- La tarjeta del proyecto abierto muestra la versión abierta y la que está en Google (con aviso si hay una más nueva).
+
+### Incluye lo de la v1.16
 
 - Memorias con formato propio: cada semana dice solo «SEM 04 AL 10 SEP» (o «SEM 28 AGO AL 03 SEP»), así se lee completo en la columna; antes el título largo quedaba cortado y parecía decir «EJECUTADO ESTE PERÍODO».
 

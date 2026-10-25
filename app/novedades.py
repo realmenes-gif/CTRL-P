@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.3.8"
+VERSION_INTERNA = "1.3.9"
 
 CAMBIOS = [
+    ("1.3.9", [
+        "En línea: al abrir el proyecto desde la lista, si el administrador subió una versión nueva, se trae sola (tus avances sin enviar se mantienen).",
+    ]),
     ("1.3.8", [
         "Datos fijos: si la partida ya tiene toda su cantidad repartida, solo se ven las ubicaciones con cantidad asignada; «Mostrar todas» las muestra todas.",
         "errores.log se manda solo al administrador cuando aparece un error (sin claves ni datos del proyecto).",

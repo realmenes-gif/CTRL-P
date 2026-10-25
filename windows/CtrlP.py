@@ -30,12 +30,19 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.16"
-VERSION_INTERNA = "1.16"
+VERSION = "v1.17"
+VERSION_INTERNA = "1.17"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.17", [
+        "En línea: «Abrir» desde la lista siempre trae la última versión de Google. Si la copia de esta computadora es más vieja se baja la nueva; si además tiene cambios sin subir, pregunta cuál abrir y la otra queda guardada como copia (no se pierde nada).",
+        "En línea (administrador): botón «Reemplazar la de Google…» para que el archivo abierto pase a ser la versión en línea (por ejemplo si lo editaste sin internet o abriste una copia local). La anterior queda guardada en Google.",
+        "En línea (administrador): al sincronizar, si en Google hay una versión más nueva que la abierta, pregunta: «Abrir la de Google» o «Reemplazarla con la mía» (antes daba error).",
+        "En línea (usuarios): al abrir el proyecto desde la lista se trae solo lo nuevo que aprobó el administrador; sus avances sin enviar se mantienen.",
+        "La tarjeta del proyecto abierto muestra la versión abierta y la que está en Google (con aviso si hay una más nueva).",
+    ]),
     ("v1.16", [
         "Memorias con formato propio: cada semana dice solo «SEM 04 AL 10 SEP» (o «SEM 28 AGO AL 03 SEP»), así se lee completo en la columna; antes el título largo quedaba cortado y parecía decir «EJECUTADO ESTE PERÍODO».",
     ]),
@@ -5377,17 +5384,29 @@ class PaginaEnLinea(Pagina):
             if v:
                 rol = "administrador" if v["rol"] == "admin" else "usuario"
                 pend = self.app.pendientes_nube
-                t.fila(f"{self.p.nombre} · en línea como {rol}",
-                       boton(t, "Sincronizar ahora", primario=True, ancho=170, command=self.sincronizar),
-                       f"Versión local v{v['version']}"
+                en_g = next((x for x in (self.lista or []) if x["id"] == v["proyecto"]), None)
+                fb = ctk.CTkFrame(t, fg_color="transparent")
+                if v["rol"] == "admin":
+                    boton(fb, "Reemplazar la de Google…", ancho=200, command=self.reemplazar_en_linea).pack(
+                        side="left", padx=(0, 8))
+                boton(fb, "Sincronizar ahora", primario=True, ancho=170, command=self.sincronizar).pack(side="left")
+                t.fila(f"{self.p.nombre} · en línea como {rol}", fb,
+                       f"Versión abierta v{v['version']}"
+                       + (f" · en Google v{en_g['version']} ({en_g.get('actualizado', '')})"
+                          + ("  ● hay una más nueva" if en_g["version"] > v["version"] else "") if en_g else "")
                        + (f" · {len(pend[0])} avances tuyos pendientes de aprobación" if pend and pend[0] else "")
                        + (" · Al sincronizar: aceptás correos, revisás los cambios recibidos y subís la versión nueva."
                           if v["rol"] == "admin" else
                           " · Al sincronizar: se envían tus cambios y recibís lo que el administrador aprobó."))
             elif (self.yo or {}).get("admin"):
-                t.fila(f"{self.p.nombre} · solo en esta computadora",
-                       boton(t, "Subir a Google…", primario=True, ancho=160, command=self.subir_nuevo),
-                       "Crea el proyecto en línea (cifrado con una clave que elegís) para que otros puedan trabajarlo.")
+                fb = ctk.CTkFrame(t, fg_color="transparent")
+                if any(x["acceso"] == "admin" for x in (self.lista or [])):
+                    boton(fb, "Reemplazar la de Google…", ancho=200, command=self.reemplazar_en_linea).pack(
+                        side="left", padx=(0, 8))
+                boton(fb, "Subir como nuevo…", primario=True, ancho=160, command=self.subir_nuevo).pack(side="left")
+                t.fila(f"{self.p.nombre} · solo en esta computadora", fb,
+                       "«Reemplazar la de Google…»: este archivo pasa a ser la versión en línea de tu proyecto (por "
+                       "ejemplo si lo editaste sin internet). «Subir como nuevo…»: crea otro proyecto en línea.")
             else:
                 t.fila(f"{self.p.nombre} · solo en esta computadora", None,
                        "Para trabajar en línea, abrí el proyecto desde la lista de abajo.")
@@ -5548,6 +5567,10 @@ class PaginaEnLinea(Pagina):
 
     # ------------------------------------------------------------ abrir desde la lista
     def abrir_en_linea(self, pr):
+        """Abre el proyecto de la lista siempre en su última versión de Google:
+        - usuario: si ya lo tenía, se abre y se trae solo lo nuevo que aprobó el administrador (sus avances quedan);
+        - administrador: si en Google hay una versión más nueva que la de esta computadora, se baja esa; si la de esta
+          computadora tiene cambios sin subir, pregunta cuál abrir (y la otra queda como copia)."""
         if self.p is not None and nb.vinculo(self.p) and nb.vinculo(self.p)["proyecto"] == pr["id"]:
             ui.info(self.app, "En línea", "Ese proyecto ya está abierto. Usá «Sincronizar ahora».")
             return
@@ -5557,17 +5580,65 @@ class PaginaEnLinea(Pagina):
         rol = "admin" if pr["acceso"] == "admin" else "usuario"
         nombre = "".join(ch for ch in pr["nombre"] if ch not in '\\/:*?"<>|').strip() or "Proyecto"
         ruta = os.path.join(nb.carpeta_en_linea(), f"{nombre}{core.EXT}")
+        respaldar = False
         if os.path.isfile(ruta):
-            try:
-                tmp = core.Proyecto(ruta, self.app.usuario)
-                ya = nb.vinculo(tmp)
-                tmp.cerrar()
-            except Exception:
-                ya = None
+            ya, sin_subir = self._datos_local(ruta)
             if ya and ya["proyecto"] == pr["id"]:
-                self.app.abrir_proyecto(ruta)          # ya lo tenías: se abre (y se sincroniza desde aquí)
-                return
-            ruta = os.path.join(nb.carpeta_en_linea(), f"{nombre} ({pr['id'][:6]}){core.EXT}")
+                if rol == "usuario":
+                    if not os.path.isfile(nb.ruta_base(pr["id"])):
+                        respaldar = True                      # sin copia base: se baja de nuevo
+                    else:
+                        self.app.abrir_proyecto(ruta)
+                        if self.p is not None and pr["version"] > ya["version"]:
+                            self._sinc_usuario(self.p, nb.vinculo(self.p), pr, c, solo_traer=True)
+                        return
+                elif pr["version"] <= ya["version"]:
+                    self.app.abrir_proyecto(ruta)             # es la misma que está en Google (o más nueva)
+                    return
+                else:
+                    if sin_subir:
+                        r = ui.dialogo_texto(
+                            self.app, "Hay una versión más nueva en Google",
+                            f"En Google está la v{pr['version']} (subida el {pr.get('actualizado', '')}).\n\n"
+                            f"La copia de esta computadora es la v{ya['version']} y tiene cambios que no subiste.\n\n"
+                            "«Abrir la de Google» baja la última y tu copia queda guardada aparte en la carpeta "
+                            "«En línea». «Abrir la mía» abre esta copia; después podés usar «Reemplazar la de "
+                            "Google…» para que la tuya pase a ser la versión en línea.",
+                            ("Cancelar", "Abrir la mía", "Abrir la de Google"), 2)
+                        if r == 1:
+                            self.app.abrir_proyecto(ruta)
+                            return
+                        if r != 2:
+                            return
+                    respaldar = sin_subir
+            else:
+                ruta = os.path.join(nb.carpeta_en_linea(), f"{nombre} ({pr['id'][:6]}){core.EXT}")
+        self._bajar_y_abrir(pr, c, ruta, rol, respaldar)
+
+    def _datos_local(self, ruta):
+        """(vínculo, tiene cambios sin subir) de un archivo de esta computadora."""
+        try:
+            tmp = core.Proyecto(ruta, self.app.usuario)
+            ya = nb.vinculo(tmp)
+            # sin la huella de la última subida no se sabe: se toma como «con cambios» (se pregunta y se guarda copia)
+            sin_subir = nb.huella_archivo(tmp) != tmp.get_meta("nube_subido_huella", "")
+            tmp.cerrar()
+            return ya, sin_subir
+        except Exception:
+            return None, False
+
+    def _respaldar(self, ruta, version):
+        """Guarda la copia de esta computadora antes de reemplazarla (no se pierde nada)."""
+        if not os.path.isfile(ruta):
+            return None
+        import shutil
+        import datetime as _dt
+        base, ext = os.path.splitext(ruta)
+        dest = f"{base} - copia local v{version} {_dt.datetime.now():%Y-%m-%d %H%M}{ext}"
+        shutil.copy2(ruta, dest)
+        return dest
+
+    def _bajar_y_abrir(self, pr, c, ruta, rol, respaldar=False):
         r = self._red("Bajando el proyecto…", lambda: nb.llamar("bajar", proyecto=pr["id"], timeout=180))
         if r is None:
             return
@@ -5577,6 +5648,18 @@ class PaginaEnLinea(Pagina):
             self.app.claves_nube.pop(pr["id"], None)
             ui.info(self.app, "Clave", str(e))
             return
+        copia = None
+        if respaldar and os.path.isfile(ruta):
+            if self.p is not None and os.path.abspath(self.p.ruta) == os.path.abspath(ruta):
+                if not self.app.cerrar_proyecto():
+                    return
+            try:
+                tmp = core.Proyecto(ruta, self.app.usuario)
+                vv = (nb.vinculo(tmp) or {}).get("version", 0)
+                tmp.cerrar()
+            except Exception:
+                vv = 0
+            copia = self._respaldar(ruta, vv)
         with open(ruta, "wb") as f:
             f.write(datos)
         if rol == "usuario":
@@ -5584,9 +5667,71 @@ class PaginaEnLinea(Pagina):
                 f.write(datos)
         tmp = core.Proyecto(ruta, self.app.usuario)
         nb.vincular(tmp, pr["id"], r["version"], rol, pr["nombre"])
+        if rol == "admin":
+            tmp.set_meta("nube_subido_huella", nb.huella_archivo(tmp))
         tmp.guardar()
         tmp.cerrar()
         self.app.abrir_proyecto(ruta)
+        if copia:
+            ui.info(self.app, "En línea", f"Se abrió la versión de Google (v{r['version']}).\n\nLa copia anterior de "
+                                          f"esta computadora quedó guardada en:\n{copia}")
+
+    # ------------------------------------------------------------ administrador: reemplazar la de Google
+    def reemplazar_en_linea(self):
+        """El archivo abierto pasa a ser la versión en línea (por ejemplo, lo editaste sin internet o abriste una
+        copia local). La versión anterior queda guardada en Google (las últimas 15)."""
+        p = self.p
+        if p is None:
+            return
+        lst = self._red("Consultando los proyectos en línea…", lambda: nb.llamar("proyectos"))
+        if lst is None:
+            return
+        self.lista = lst["proyectos"]
+        self.yo = {"email": lst["email"], "admin": lst["admin"]}
+        mios = [x for x in self.lista if x["acceso"] == "admin"]
+        v = nb.vinculo(p)
+        pr = next((x for x in mios if v and x["id"] == v["proyecto"]), None)
+        if pr is None:
+            if not mios:
+                ui.info(self.app, "Reemplazar", "No hay proyectos en línea tuyos para reemplazar. Usá «Subir a Google…».")
+                return
+            if len(mios) == 1:
+                pr = mios[0]
+            else:
+                nombres = [x["nombre"][:28] for x in mios[:3]]
+                k = ui.dialogo_texto(self.app, "Reemplazar en Google", "¿Qué proyecto en línea se reemplaza con el "
+                                                                      "archivo abierto?", ["Cancelar"] + nombres, 0)
+                if not k:
+                    return
+                pr = mios[k - 1]
+        r = ui.dialogo_texto(
+            self.app, "Reemplazar la versión de Google",
+            f"La versión en línea de «{pr['nombre']}» (v{pr['version']}, subida el {pr.get('actualizado', '')}) "
+            f"se reemplaza por el proyecto que tenés abierto:\n{p.ruta}\n\n"
+            "La anterior queda guardada en Google. Los usuarios reciben esta al sincronizar (sus avances sin aprobar "
+            "se mantienen y los revisás como siempre).",
+            ("Cancelar", "Reemplazar"), 1)
+        if r != 1:
+            return
+        c = self.clave_proyecto(pr["id"], pr["nombre"], pr.get("verificador", ""))
+        if not c:
+            return
+        if self.app.p is not None and self.app.p.sucio:
+            self.app.guardar()
+        datos = nb.bytes_proyecto(p)
+        pid, vb = pr["id"], pr["version"]
+        rr = self._red("Subiendo tu versión a Google…", lambda: nb.llamar(
+            "subir", proyecto=pid, version_base=vb, datos=nb.b64(nb.cifrar(datos, c)), timeout=180))
+        if rr is None:
+            return
+        nb.vincular(p, pid, rr["version"], "admin", pr["nombre"])
+        p.set_meta("nube_subido_huella", nb.huella_archivo(p))
+        self.app.guardar()
+        p.registrar("Versión en línea reemplazada", "", "", self.app.usuario or "",
+                    f"v{vb} → v{rr['version']} con {os.path.basename(p.ruta)}")
+        self.app.guardar()
+        ui.info(self.app, "En línea", f"Listo: la versión en línea ahora es la tuya (v{rr['version']}).")
+        self.cargar_lista()
 
     # ------------------------------------------------------------ sincronizar
     def sincronizar(self):
@@ -5615,6 +5760,18 @@ class PaginaEnLinea(Pagina):
 
     def _sinc_admin(self, p, v, pr, c):
         pid = v["proyecto"]
+        if pr["version"] > v["version"]:
+            r = ui.dialogo_texto(
+                self.app, "Hay una versión más nueva en Google",
+                f"En Google está la v{pr['version']} (subida el {pr.get('actualizado', '')}) y la que tenés abierta es "
+                f"la v{v['version']}.\n\n«Abrir la de Google» baja la última (tu archivo queda guardado como copia). "
+                "«Reemplazarla con la mía» sube la que tenés abierta como versión en línea.",
+                ("Cancelar", "Reemplazarla con la mía", "Abrir la de Google"), 2)
+            if r == 2:
+                self._bajar_y_abrir(pr, c, p.ruta, "admin", respaldar=True)
+            elif r == 1:
+                self.reemplazar_en_linea()
+            return
         # 1) correos que piden acceso
         if pr.get("accesos_pendientes"):
             acc = self._red("Consultando accesos…", lambda: nb.llamar("accesos", proyecto=pid))
@@ -5682,19 +5839,26 @@ class PaginaEnLinea(Pagina):
         else:
             ui.info(self.app, "Sincronizado", "No había cambios: la versión en línea ya es la tuya.")
 
-    def _sinc_usuario(self, p, v, pr, c):
+    def _sinc_usuario(self, p, v, pr, c, solo_traer=False):
+        """solo_traer: al abrir, trae lo nuevo que aprobó el administrador sin enviar nada todavía."""
         pid = v["proyecto"]
         base_ruta = nb.ruta_base(pid)
         if not os.path.isfile(base_ruta):
             ui.info(self.app, "En línea", "Falta la copia base de este proyecto en esta computadora. Abrilo de nuevo "
                                           "desde la lista de «Proyectos en línea».")
             return
-        me = self._red("Consultando tus envíos…", lambda: nb.llamar("mis_envios", proyecto=pid, marcar_vistos=True))
+        me = self._red("Consultando tus envíos…", lambda: nb.llamar("mis_envios", proyecto=pid,
+                                                                     marcar_vistos=not solo_traer))
         if me is None:
             return
         avisos = me.get("avisos", [])
         pendiente_srv = any(x["estado"] == "pendiente" for x in me.get("envios", []))
         mensajes = []
+        if solo_traer and pendiente_srv:
+            ui.info(self.app, "En línea", f"En Google hay una versión más nueva (v{pr['version']}), pero tu envío "
+                                          "anterior todavía espera la aprobación del administrador. La recibís al "
+                                          "sincronizar cuando lo resuelva.")
+            return
         # 1) traer lo aprobado (si no espera respuesta de un envio)
         if pr["version"] > v["version"] and not pendiente_srv:
             r = self._red("Bajando la versión nueva…", lambda: nb.llamar("bajar", proyecto=pid, timeout=180))
@@ -5722,6 +5886,11 @@ class PaginaEnLinea(Pagina):
                 return
             v = nb.vinculo(p)
             mensajes.append(f"Recibiste la versión v{r['version']} con lo que aprobó el administrador.")
+        if solo_traer:
+            self.app.proyecto_cargado()
+            ui.info(self.app, "En línea", "\n\n".join(mensajes + ["Tus avances sin enviar se mantienen; se envían "
+                                                                  "con «Sincronizar ahora»."]))
+            return
         # 2) enviar lo propio
         with open(base_ruta, "rb") as f:
             base = f.read()
