@@ -1,0 +1,11 @@
+{
+ "version": "1.4.0",
+ "apk": "ctrlp-1.4.0-arm64-v8a-debug.apk",
+ "sha256": "0d287f5104a06456330c615ba40a48253e7d73c72216a202978cfc2cb890a203",
+ "tamano": 24696490,
+ "novedades": [
+  "Informes: los botones de opciones van en una barra que se despliega con «Opciones ▼». Cerrada, muestra en una línea lo elegido (período, detalle, vista y qué se muestra) y la tabla tiene mucho más lugar.",
+  "Informes: «Ocultar resumen» pasó a la barra de arriba y los indicadores debajo de la gráfica quedan del alto de su texto (la gráfica no cambia).",
+  "Las casillas de texto (por ejemplo la fecha «Hasta») muestran el texto siempre centrado y entero (antes podía verse medio número)."
+ ]
+}
