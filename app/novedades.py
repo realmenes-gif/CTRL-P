@@ -1,8 +1,13 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.3.9"
+VERSION_INTERNA = "1.4.0"
 
 CAMBIOS = [
+    ("1.4.0", [
+        "Informes: los botones de opciones van en una barra que se despliega con «Opciones ▼». Cerrada, muestra en una línea lo elegido (período, detalle, vista y qué se muestra) y la tabla tiene mucho más lugar.",
+        "Informes: «Ocultar resumen» pasó a la barra de arriba y los indicadores debajo de la gráfica quedan del alto de su texto (la gráfica no cambia).",
+        "Las casillas de texto (por ejemplo la fecha «Hasta») muestran el texto siempre centrado y entero (antes podía verse medio número).",
+    ]),
     ("1.3.9", [
         "En línea: al abrir el proyecto desde la lista, si el administrador subió una versión nueva, se trae sola (tus avances sin enviar se mantienen).",
     ]),

@@ -24,6 +24,7 @@ from tabla import Tabla
 from ui_k import (Boton, Campo, Etiqueta, Fila, Flujo, Interruptor, Menu, Segmentado, Tarjeta, fmt, fmt_pct, rgba)
 
 COLORES = ("#4E79A7", "#16A34A", "#CBD5E1")
+ALTO_KPI = 86            # alto de los indicadores bajo la grafica (texto + aire)
 TIPOS_GRAFICA = ("Dona", "Pastel", "Barra 100 %", "Columnas", "Medidor")
 
 
@@ -188,14 +189,25 @@ class PaginaInformes(Pagina):
         g.add_widget(Boton("Agrupar", ancho=96, alto=40, al_tocar=lambda: self.tabla and self.tabla.desplegar(False)))
         self.b_cols = Boton("Columnas", ancho=170, alto=40, al_tocar=self.columnas)
         g.add_widget(self.b_cols)
-        g.add_widget(Boton("Actualizar", primario=True, ancho=130, alto=40, al_tocar=self.generar))
         ws.append(g)
         for w in ws:
             if w.size_hint_x is not None:
                 w.size_hint_x = None
         self.flujo_ctl = FlujoAlto(ws)
-        ctl.add_widget(self.flujo_ctl)
+        # barra compacta: lo elegido en una linea + resumen / opciones / actualizar (la tabla gana espacio)
+        barra = Fila(alto=40, espacio=8)
+        self.l_elegido = Etiqueta("", 13, color="texto2", una_linea=True)
+        barra.add_widget(self.l_elegido)
+        self.b_res = Boton("▲ Ocultar resumen", ancho=180, alto=40, tam=13, al_tocar=self._alternar_resumen)
+        barra.add_widget(self.b_res)
+        self.b_opc = Boton("Opciones ▼", ancho=140, alto=40, tam=13, al_tocar=self._alternar_opciones)
+        barra.add_widget(self.b_opc)
+        barra.add_widget(Boton("Actualizar", primario=True, ancho=130, alto=40, al_tocar=self.generar))
+        self.ctl = ctl
+        ctl.add_widget(barra)
         self.cuerpo.add_widget(ctl)
+        for w in (self.e_desde, self.e_hasta):
+            w.bind(text=lambda *_: self._poner_elegido())
         # grafica (arriba) e indicadores
         self.resumen = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(260), spacing=dp(10))
         tg = Tarjeta(relleno=10, espacio=4, ajustar_alto=False, size_hint_y=None, height=dp(150))
@@ -216,25 +228,22 @@ class PaginaInformes(Pagina):
         fila_g.add_widget(der)
         tg.add_widget(fila_g)
         self.resumen.add_widget(tg)
-        kp = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(100), spacing=dp(10))
+        # indicadores: del alto de su texto (con aire para que se lean bien)
+        kp = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(ALTO_KPI), spacing=dp(10))
         self.kpis = []
         for k in range(5):
-            t = Tarjeta(relleno=10, espacio=0, ajustar_alto=False)
+            t = Tarjeta(relleno=8, espacio=2, ajustar_alto=False)
+            t.padding = [dp(12), dp(9), dp(12), dp(9)]
             a = Etiqueta("", 11, color="texto2", una_linea=True)
-            b = Etiqueta("", 20, True, una_linea=True)
-            c = Etiqueta("", 11, color="texto2")
+            b = Etiqueta("", 19, True, una_linea=True)
+            c = Etiqueta("", 11, color="texto2", una_linea=True)
             t.add_widget(a)
             t.add_widget(b)
             t.add_widget(c)
-            t.add_widget(Widget())
             kp.add_widget(t)
             self.kpis.append((a, b, c))
         self.resumen.add_widget(kp)
-        fila_res = Fila(alto=30)
-        fila_res.add_widget(Widget())
-        self.b_res = Boton("▲ Ocultar resumen", plano=True, ancho=200, alto=30, tam=12, al_tocar=self._alternar_resumen)
-        fila_res.add_widget(self.b_res)
-        self.cuerpo.add_widget(fila_res)
+        self.resumen.height = dp(150 + 10 + ALTO_KPI)
         self.cuerpo.add_widget(self.resumen)
         self.contenedor = BoxLayout(orientation="vertical")
         self.cuerpo.add_widget(self.contenedor)
@@ -261,8 +270,34 @@ class PaginaInformes(Pagina):
             self.cuerpo.remove_widget(self.resumen)
             self.b_res.text = "▼ Mostrar resumen"
         else:
-            self.cuerpo.add_widget(self.resumen, index=1)
+            self.cuerpo.add_widget(self.resumen, index=self.cuerpo.children.index(self.contenedor) + 1)
             self.b_res.text = "▲ Ocultar resumen"
+
+    def _alternar_opciones(self):
+        """Los botones de opciones se despliegan debajo de la barra; cerrados, la tabla tiene más lugar."""
+        if self.flujo_ctl.parent is not None:
+            self.ctl.remove_widget(self.flujo_ctl)
+            self.b_opc.text = "Opciones ▼"
+        else:
+            self.ctl.add_widget(self.flujo_ctl)
+            self.flujo_ctl.rearmar()
+            self.b_opc.text = "Opciones ▲"
+
+    def _poner_elegido(self):
+        """Lo elegido en una línea (para la barra cerrada)."""
+        try:
+            estado = self.s_modo.valor == "Estado al"
+            fechas = (f"Estado al {self.e_hasta.text}" if estado else
+                      f"Período {self.e_desde.text} – {self.e_hasta.text}")
+            partes = [fechas]
+            if not estado:
+                partes.append(self.s_det.valor)
+            partes += [self.s_vista.valor, self.s_filtro.valor]
+            if self.sw_contr.activo:
+                partes.append("solo lo contractual")
+            self.l_elegido.text = "  ·  ".join(partes)
+        except Exception:
+            pass
 
     def _tipo_graf(self, v):
         self.app.cfg = core.config_poner(tipo_grafica=v)
@@ -329,6 +364,7 @@ class PaginaInformes(Pagina):
 
     # ---------------------------------------------------------------- generar
     def generar(self):
+        self._poner_elegido()
         if not self.p:
             return
         try:

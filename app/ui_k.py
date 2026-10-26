@@ -258,6 +258,14 @@ class Campo(TextInput):
             self.size_hint_x = None
             self.width = dp(ancho)
         self.padding = [dp(10), (dp(alto) - sp(tam) * 1.2) / 2, dp(10), 0]
+        # el texto siempre centrado y entero: con el alto de linea real (no la estimacion) y sin que se desplace
+        # hacia arriba al tocar o escribir (antes la fecha podia quedar con medio numero oculto)
+        def centrar(*_):
+            pv = max(0.0, (self.height - self.line_height) / 2.0)
+            self.padding = [dp(10), pv, dp(10), pv]
+        self.bind(height=centrar, font_size=centrar, line_height=centrar)
+        Clock.schedule_once(centrar, 0)
+        self.bind(scroll_y=lambda w, v: v and setattr(w, "scroll_y", 0))
         self.background_normal = self.background_active = ""
         self.background_disabled_normal = ""
         self.background_color = rgba("campo")
