@@ -128,7 +128,7 @@ def exportar_memorias(p, ruta, modo, desde, hasta, filtro="completo", solo_contr
     import ctrlp_memoria as mc
     if modo == "estado":
         desde = hasta
-    calc = Calculo(p, desde, hasta, solo_contractual)
+    calc = Calculo(p, desde, hasta, solo_contractual, sumar_excedente=not solo_contractual)
     ids = calc.visibles(filtro or "completo")
     if solo is not None:
         ids = _elegidas(ids, solo)
@@ -152,7 +152,7 @@ def lista_memorias(p, modo, desde, hasta, filtro="completo", solo_contractual=Fa
     """Partidas que llevarian memoria con el filtro elegido, en el orden del presupuesto."""
     if modo == "estado":
         desde = hasta
-    calc = Calculo(p, desde, hasta, solo_contractual)
+    calc = Calculo(p, desde, hasta, solo_contractual, sumar_excedente=not solo_contractual)
     ids = calc.visibles(filtro or "completo")
     return [it for it in calc.items if it["tipo"] == "P" and it["id"] in ids]
 
@@ -172,7 +172,7 @@ def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, fil
         filtro = "historial"
     elif not filtro:
         filtro = "completo"
-    calc = Calculo(p, desde, hasta, solo_contractual)
+    calc = Calculo(p, desde, hasta, solo_contractual, sumar_excedente=not solo_contractual)
     vis_ids = calc.visibles(filtro)
     cortes = buckets(desde, hasta, detalle, p.inicio_semana) if (detalle and modo == "periodo") else []
     ex_buckets = []
@@ -198,7 +198,7 @@ def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, fil
              ("Avance financiero " + ("del día" if modo == "estado" else "del período"), t["m_per"], t["p_per"]),
              ("Avance financiero acumulado total", t["m_tot"], t["p_tot"]),
              ("Saldo por ejecutar", t["total"] - t["m_tot"], t["p_saldo"]),
-             ("Fuera de lo contractual (acumulado)" if solo_contractual else "Excedente no cobrable (acumulado)",
+             ("Fuera de lo contractual (acumulado)" if solo_contractual else "Excedente sumado en los montos (acumulado)",
               t["m_exc"], None)]
     _fila_enc(ws, f, ["Concepto", f"Monto ({mon})", "% del presupuesto"])
     for k, (n, m, pc) in enumerate(filas, start=f + 1):
@@ -371,7 +371,7 @@ def exportar_informe(p, ruta, modo, desde, hasta, detalle="", visibles=None, fil
              ("m_per", f"Monto {'del día' if modo == 'estado' else 'del período'} ({mon})", 16),
              ("m_tot", f"Monto acumulado ({mon})", 16), ("m_saldo", f"Saldo ({mon})", 16),
              ("a_per", "% aporte " + ("del día" if modo == "estado" else "del período"), 12),
-             ("a_tot", "% aporte acumulado", 12), ("m_exc", (f"Fuera de lo contractual ({mon})" if solo_contractual else f"Excedente no cobrable ({mon})"), 16)]
+             ("a_tot", "% aporte acumulado", 12), ("m_exc", (f"Fuera de lo contractual ({mon})" if solo_contractual else f"Excedente incluido ({mon})"), 16)]
     _fila_enc(ws, f, [c[1] for c in fcols])
     for k, (_, _, w) in enumerate(fcols, start=1):
         ws.column_dimensions[get_column_letter(k)].width = w
@@ -447,7 +447,7 @@ def exportar_corte(p, ruta, desde, hasta, solo_contractual=False, progreso=None,
     memorias: agrega la memoria de calculo de cada actividad del filtro con una sola columna «ESTE PERÍODO»
     (la suma del periodo, sin el desglose por semana)."""
     _ESTILOS.clear()
-    calc = Calculo(p, desde, hasta, solo_contractual)
+    calc = Calculo(p, desde, hasta, solo_contractual, sumar_excedente=not solo_contractual)
     mon = p.get_meta("moneda", "US$") or "US$"
     wb = openpyxl.Workbook()
     ws = wb.active

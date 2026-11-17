@@ -1,4 +1,8 @@
-## Ctrl-P v1.25 (Windows)
+## Ctrl-P v1.26 (Windows)
+
+- Informes, Exportar y Memorias: con «Solo lo contractual» apagado, el excedente (lo ejecutado por encima de lo contractual) ahora sí suma en los montos del período y acumulados. Encendido, siguen siendo solo los montos cobrables. El excedente se sigue mostrando aparte.
+
+### Incluye lo de la v1.25
 
 - Registro de avance: la barra de desplazamiento horizontal queda abajo de la tabla, fija y siempre visible, fina y más oscura. Ya no tapa los títulos de las fechas.
 

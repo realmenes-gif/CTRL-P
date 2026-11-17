@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.4.3"
+VERSION_INTERNA = "1.4.4"
 
 CAMBIOS = [
+    ("1.4.4", [
+        "Informes: con «Solo lo contractual» apagado, el excedente (lo ejecutado por encima de lo contractual) ahora sí suma en los montos del período y acumulados. Encendido, siguen siendo solo los montos cobrables.",
+    ]),
     ("1.4.3", [
         "Datos fijos: cada edificio es una sola tarjeta dibujada; al tocar una casilla aparece la casilla para escribir, y Enter pasa a la siguiente. Abre unas 6 veces más rápido (de unos 970 controles a 185).",
         "Datos fijos › Tramos/Equipos: los renglones de ubicación con «+ Tramo» se dibujan sin un control por renglón.",

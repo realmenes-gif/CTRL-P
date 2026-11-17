@@ -32,12 +32,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.25"
-VERSION_INTERNA = "1.25"
+VERSION = "v1.26"
+VERSION_INTERNA = "1.26"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.26", [
+        "Informes, Exportar y Memorias: con «Solo lo contractual» apagado, el excedente (lo ejecutado por encima de lo contractual) ahora sí suma en los montos del período y acumulados. Encendido, siguen siendo solo los montos cobrables. El excedente se sigue mostrando aparte.",
+    ]),
     ("v1.25", [
         "Registro de avance: la barra de desplazamiento horizontal queda abajo de la tabla, fija y siempre visible, fina y más oscura. Ya no tapa los títulos de las fechas.",
     ]),
@@ -4222,7 +4225,7 @@ class PaginaInformes(Pagina):
             self.v_desde.set(core.fecha_txt(desde))
         self.v_hasta.set(core.fecha_txt(hasta))
         contr = self.v_contr.get()
-        calc = core.Calculo(self.p, desde, hasta, contr)
+        calc = core.Calculo(self.p, desde, hasta, contr, sumar_excedente=not contr)
         t = calc.totales()
         mon = self.p.get_meta("moneda", "US$")
         estado = modo == "estado"
@@ -4240,7 +4243,7 @@ class PaginaInformes(Pagina):
                  ("Avance financiero del día" if estado else "Avance financiero del período", fmt_pct(t["p_per"], 2), f"{mon} {fmt(t['m_per'])}"),
                  ("Acumulado total", fmt_pct(t["p_tot"], 2), f"{mon} {fmt(t['m_tot'])}"),
                  ("Saldo por ejecutar", fmt_pct(t["p_saldo"], 2), f"{mon} {fmt(t['total'] - t['m_tot'])}"),
-                 ("Fuera de lo contractual" if contr else "Excedente no cobrable", f"{mon} {fmt(t['m_exc'])}",
+                 ("Fuera de lo contractual" if contr else "Excedente (sumado en los montos)", f"{mon} {fmt(t['m_exc'])}",
                   f"{sum(1 for i in calc.items if i['tipo'] == 'P' and calc.res[i['id']]['exc_tot'] > 1e-9)} partidas "
                   + ("con avance que no cuenta" if contr else "sobre su contractual"))]
         for (a, b, c), (x, y, z) in zip(self.kpis, datos):
@@ -4249,9 +4252,10 @@ class PaginaInformes(Pagina):
             c.set(z)
         falta = max(t["total"] - t["m_tot"], 0.0)
         self._grafica([("Ejecutado antes" if not estado else "Ejecutado antes del día", t["m_ant"]),
-                       ("Cobrado en el período" if not estado else "Cobrado en el día", t["m_per"]),
+                       (("Cobrado" if contr else "Ejecutado") + (" en el período" if not estado else " en el día"), t["m_per"]),
                        ("Falta por ejecutar", falta)], mon,
-                      "Porcentaje del presupuesto total · montos cobrables (con tope contractual)")
+                      "Porcentaje del presupuesto total · " + ("montos cobrables (con tope contractual)" if contr
+                                                                 else "montos con el excedente incluido"))
         det = {"+ Por día": "dia", "+ Por semana": "semana"}.get(self.v_det.get(), "")
         cortes = core.buckets(desde, hasta, det, self.p.inicio_semana) if (det and not estado) else []
         if len(cortes) > 62:

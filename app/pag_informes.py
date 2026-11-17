@@ -378,7 +378,7 @@ class PaginaInformes(Pagina):
             self.e_desde.text = core.fecha_txt(desde)
         self.e_hasta.text = core.fecha_txt(hasta)
         contr = self.sw_contr.activo
-        calc = core.Calculo(self.p, desde, hasta, contr)
+        calc = core.Calculo(self.p, desde, hasta, contr, sumar_excedente=not contr)
         t = calc.totales()
         mon = self.p.get_meta("moneda", "US$")
         estado = modo == "estado"
@@ -397,16 +397,17 @@ class PaginaInformes(Pagina):
                   f"{mon} {fmt(t['m_per'])}"),
                  ("Acumulado total", fmt_pct(t["p_tot"], 2), f"{mon} {fmt(t['m_tot'])}"),
                  ("Saldo por ejecutar", fmt_pct(t["p_saldo"], 2), f"{mon} {fmt(t['total'] - t['m_tot'])}"),
-                 ("Fuera de lo contractual" if contr else "Excedente no cobrable", f"{mon} {fmt(t['m_exc'])}",
+                 ("Fuera de lo contractual" if contr else "Excedente (sumado en los montos)", f"{mon} {fmt(t['m_exc'])}",
                   f"{sum(1 for i in calc.items if i['tipo'] == 'P' and calc.res[i['id']]['exc_tot'] > 1e-9)} partidas "
                   + ("con avance que no cuenta" if contr else "sobre su contractual"))]
         for (a, b, c), (x, y, z) in zip(self.kpis, datos):
             a.text, b.text, c.text = x, y, z
         falta = max(t["total"] - t["m_tot"], 0.0)
         self._grafica([("Ejecutado antes" if not estado else "Ejecutado antes del día", t["m_ant"]),
-                       ("Cobrado en el período" if not estado else "Cobrado en el día", t["m_per"]),
+                       (("Cobrado" if contr else "Ejecutado") + (" en el período" if not estado else " en el día"), t["m_per"]),
                        ("Falta por ejecutar", falta)],
-                      "Porcentaje del presupuesto total · montos cobrables (con tope contractual)")
+                      "Porcentaje del presupuesto total · " + ("montos cobrables (con tope contractual)" if contr
+                                                                 else "montos con el excedente incluido"))
         det = {"+ Por día": "dia", "+ Por semana": "semana"}.get(self.s_det.valor, "")
         self.l_sem.text = f"Semanas: {core.texto_semana(self.p.inicio_semana)}"
         cortes = core.buckets(desde, hasta, det, self.p.inicio_semana) if (det and not estado) else []

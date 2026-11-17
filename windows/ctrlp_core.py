@@ -2208,10 +2208,14 @@ def pasa_filtro(r, filtro):
 class Calculo:
     """Calculo completo para un corte: ant (antes de 'desde'), per (desde..hasta), tot (hasta)."""
 
-    def __init__(self, proyecto, desde, hasta, solo_contractual=False):
+    def __init__(self, proyecto, desde, hasta, solo_contractual=False, sumar_excedente=False):
+        """sumar_excedente (Informes y Exportar con «Solo lo contractual» apagado): los montos anterior, del
+        período y acumulado incluyen lo ejecutado por encima de lo contractual (el excedente se sigue informando).
+        Sin él (Registro de avance), los montos son solo lo cobrable."""
         self.p = proyecto
         self.desde, self.hasta = desde, hasta
         self.solo = bool(solo_contractual)
+        self.sumar_exc = bool(sumar_excedente) and not self.solo
         self.items = proyecto.items()
         self.por_id = {i["id"]: i for i in self.items}
         self.cont = proyecto.todo_contractual()
@@ -2253,6 +2257,9 @@ class Calculo:
             cob_t, cob_a = min(cob_t, tot), min(cob_a, ant)
             exc_t = max(sum(self.ex_tot_bruto.get(it["id"], {}).values()) - cob_t, 0.0)
             exc_a = max(sum(self.ex_ant_bruto.get(it["id"], {}).values()) - cob_a, 0.0)
+        if self.sumar_exc:
+            # sin «Solo lo contractual»: el excedente también suma en los montos (lo ejecutado completo)
+            cob_t, cob_a = tot, ant
         pu = it["pu"] or 0.0
         cant = it["cantidad"] or 0.0
         return {
