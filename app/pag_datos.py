@@ -17,6 +17,7 @@ import ctrlp_core as core
 import ui_k as ui
 from paginas import Pagina
 from tabla import ArbolPartidas
+from tarjeta_lig import RenglonLiviano, TarjetaLiviana
 from ui_k import (Boton, Campo, Casilla, Columna, Desplazable, Espacio, Etiqueta, Fila, Menu, Segmentado, Tarjeta,
                   fmt, leer_num, rgba, txt_num)
 
@@ -125,7 +126,14 @@ class PaginaDatosFijos(Pagina):
             return self.guardar()
         return True
 
+    @staticmethod
+    def _cerrar_editor():
+        """Pasa al dibujo lo que haya en la casilla abierta (antes de guardar, comparar o redibujar)."""
+        if TarjetaLiviana._activa is not None:
+            TarjetaLiviana._activa.cerrar()
+
     def _cambios(self):
+        self._cerrar_editor()
         if self._hitos_cambiados() or self._lista_cambiada(self.tramos_ed, self.tramos_orig, True) or \
                 self._lista_cambiada(self.equipos_ed, self.equipos_orig):
             return True
@@ -159,6 +167,7 @@ class PaginaDatosFijos(Pagina):
         Clock.schedule_once(lambda *_: setattr(self.desp, "scroll_y", y), 0)
 
     def mostrar(self, conservar=False):
+        self._cerrar_editor()
         self.col.clear_widgets()
         if not conservar:
             self._limpiar_estado()
@@ -236,65 +245,44 @@ class PaginaDatosFijos(Pagina):
         grid = GridLayout(cols=2, spacing=dp(12), size_hint_y=None)
         grid.bind(minimum_height=grid.setter("height"))
         n_ed = 0
+        self._tarjetas = []
         for e in self.p.edificios():
             niv = [n for n in self.p.niveles_de(e["id"]) if self._visibles is None or n["id"] in self._visibles]
             if not niv:
                 continue
             n_ed += 1
-            tt = Tarjeta(relleno=14, espacio=6)
             s = sum(cont.get(n["id"], 0) for n in niv if n["id"] in cont)
             hay = any(n["id"] in cont for n in niv)
-            cab = Fila(alto=34)
-            cab.add_widget(Etiqueta(e["nombre"], 16, True))
-            cab.add_widget(Etiqueta(fmt(s) if hay else "Sin asignar", 15, True, color="texto" if hay else "texto2",
-                                    alinear="right"))
-            tt.add_widget(cab)
+            filas = []
             for n in niv:
                 orig = cont.get(n["id"])
                 if n["id"] not in self.vars:
                     self.vars[n["id"]] = [txt_num(orig), orig]
-                st = self.vars[n["id"]]
-                f = Fila(alto=46)
-                f.add_widget(Etiqueta("Área sin nivel" if e["es_area"] else n["nombre"], 14, bool(tipos)))
-                en = Campo(st[0], pista="Sin asignar", ancho=150, alinear="right", numerico=True)
-                en.bind(text=lambda w, t, st=st: st.__setitem__(0, t))
-                fijo_n = bloqueado or (not self.editar and orig is not None)
-                en.disabled = fijo_n
-                f.add_widget(en)
-                tt.add_widget(f)
-                if tipos:
-                    campos_t = []
-                    for tp, hid0 in tipos:
-                        o_t = cant_t.get((n["id"], tp))
-                        k = (n["id"], hid0)
-                        if k not in self.vars_tipo:
-                            self.vars_tipo[k] = [txt_num(o_t), o_t, tp]
-                        stt = self.vars_tipo[k]
-                        ft = Fila(alto=42)
-                        ft.add_widget(Espacio(1, ancho=18))
-                        ft.add_widget(Etiqueta(tp, 13, color="texto2"))
-                        et = Campo(stt[0], pista="Sin asignar", ancho=130, alinear="right", numerico=True, alto=40)
-                        et.disabled = bloqueado or (not self.editar and o_t is not None)
-                        et.bind(text=lambda w, t, stt=stt: stt.__setitem__(0, t))
-                        campos_t.append(et)
-                        ft.add_widget(et)
-                        tt.add_widget(ft)
-
-                    def sumar(*_, en=en, campos_t=campos_t, fijo_n=fijo_n):
-                        nums = [leer_num(x.text) for x in campos_t]
-                        if any(isinstance(x, float) for x in nums):
-                            tot = sum(x for x in nums if isinstance(x, float))
-                            en.text = txt_num(round(tot, 6))
-                            en.disabled = True
-                        else:
-                            en.disabled = fijo_n
-                    for x in campos_t:
-                        x.bind(text=sumar)
-                    sumar()
+                g = len(filas)
+                filas.append({"etiq": "Área sin nivel" if e["es_area"] else n["nombre"], "st": self.vars[n["id"]],
+                              "negrita": bool(tipos), "fijo": bloqueado or (not self.editar and orig is not None)})
+                for tp, hid0 in tipos:
+                    o_t = cant_t.get((n["id"], tp))
+                    k = (n["id"], hid0)
+                    if k not in self.vars_tipo:
+                        self.vars_tipo[k] = [txt_num(o_t), o_t, tp]
+                    filas.append({"etiq": tp, "st": self.vars_tipo[k], "sub": True, "grupo": g,
+                                  "fijo": bloqueado or (not self.editar and o_t is not None)})
+            tt = TarjetaLiviana(e["nombre"], fmt(s) if hay else "Sin asignar", "texto" if hay else "texto2", filas,
+                                al_final=self._tarjeta_siguiente)
+            self._tarjetas.append(tt)
             grid.add_widget(tt)
         if n_ed % 2:
             grid.add_widget(Widget(size_hint_y=None, height=0))
         self.col.add_widget(grid)
+
+    def _tarjeta_siguiente(self, tt):
+        """Enter en la última casilla de un edificio: sigue en el próximo."""
+        i = self._tarjetas.index(tt) if tt in self._tarjetas else -1
+        for t2 in self._tarjetas[i + 1:]:
+            if t2.primera():
+                self.desp.scroll_to(t2, padding=dp(20))
+                return
 
     # ---------------------------------------------------------------- mas detalles
     def _mas_detalles(self, it, bloqueado, fija):
@@ -554,8 +542,6 @@ class PaginaDatosFijos(Pagina):
             filas = datos.get(nv, [])
             if self._visibles is not None and nv not in self._visibles and not filas:
                 continue
-            f = Fila(alto=44)
-            f.add_widget(Etiqueta(u["etiqueta"], 14, True, ancho_fijo=200))
             suma = sum(x for x in (leer_num(fl[2]) for fl in filas) if isinstance(x, float))
             info = f"{len(filas)} {palabra}" if filas else f"sin {palabra}"
             if suma:
@@ -564,11 +550,8 @@ class PaginaDatosFijos(Pagina):
                     info += f" de {fmt(cont[nv])} contractual"
                     if es_eq and abs(suma - cont[nv]) > 0.005:
                         info += "  ●"
-            f.add_widget(Etiqueta(info, 12, color="texto2"))
-            b = Boton("+ Equipo" if es_eq else "+ Tramo", ancho=110, al_tocar=lambda nv=nv: self._agregar_fila(tipo, nv))
-            b.disabled = bloqueado
-            f.add_widget(b)
-            t.add_widget(f)
+            t.add_widget(RenglonLiviano(u["etiqueta"], info, "+ Equipo" if es_eq else "+ Tramo",
+                                        al_tocar=lambda nv=nv: self._agregar_fila(tipo, nv), deshabilitado=bloqueado))
             ops_eq = ([SIN_EQ] + [fl[1].strip().upper() for fl in self.equipos_ed.get(nv, []) if fl[1].strip()]
                       if con_eq and not es_eq else None)
             for k, fl in enumerate(filas):
@@ -704,6 +687,7 @@ class PaginaDatosFijos(Pagina):
         return n
 
     def guardar(self):
+        self._cerrar_editor()
         if not self.p or not self.it or self.p.solo_agregar:
             return True
         n_cambios = 0

@@ -1,10 +1,16 @@
-## Ctrl-P v1.23 (Windows)
+## Ctrl-P v1.24 (Windows)
+
+- Datos fijos: cada edificio es una sola tarjeta dibujada (como la tabla de Registro); al hacer clic en una casilla aparece la casilla para escribir. Enter, Tab y las flechas pasan a la siguiente, también a la del edificio siguiente. La 06.03 abre en 0.4 s en vez de 1 s, con un tercio de los controles.
+- Datos fijos › Tramos/Equipos: la lista de ubicaciones con «+ Tramo» se dibuja en un solo lienzo; la 17.02.02 abre en la mitad del tiempo.
+- Ubicaciones: cada edificio es una sola tarjeta dibujada (nombre, Editar, Eliminar, + tramo y niveles). La página abre en 0.2 s en vez de 0.9 s, y Refrescar tarda 0.08 s en vez de 0.7 s.
+- Apariencia: se quitó el interruptor «Usar la tabla clásica»; Registro de avance usa siempre la tabla nueva.
+
+### Incluye lo de la v1.23
 
 - Registro de avance con tabla nueva (virtual): solo se dibujan las filas que se ven. La 06.03 (374 filas) abre en 0.2 s en vez de 2.5–3 s, y deslizar y escribir son instantáneos aunque la partida tenga cientos de filas.
 - La tabla ocupa el resto de la pantalla y se desliza por dentro; la tarjeta de la partida queda arriba y los títulos de columna quedan siempre a la vista.
 - Se escribe igual: tocás la casilla y escribís; Enter o ↓ bajan a la siguiente, ↑ sube. Al bajar con Enter se selecciona el número (escribir lo reemplaza).
 - Historial completo, niveles que se abren y cierran, Fechas con avance, Observaciones, «+ tramo», los colores y los cálculos funcionan igual.
-- Apariencia › «Tabla de Registro de avance»: interruptor «Usar la tabla clásica» para volver a la tabla anterior si algo de la nueva no te funciona.
 
 ### Incluye lo de la v1.22
 

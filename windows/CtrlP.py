@@ -24,6 +24,7 @@ import ctrlp_core as core
 import ctrlp_excel as xl
 import ctrlp_memoria as mc
 import ctrlp_ui as ui
+from ctrlp_lienzo import RenglonesLienzo, TarjetaLienzo, TarjetaUbicacion
 import ctrlp_tabla
 import ctrlp_planos as pl
 import ctrlp_actualizar as act_
@@ -31,19 +32,24 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.23"
-VERSION_INTERNA = "1.23"
+VERSION = "v1.24"
+VERSION_INTERNA = "1.24"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.24", [
+        "Datos fijos: cada edificio es una sola tarjeta dibujada (como la tabla de Registro); al hacer clic en una casilla aparece la casilla para escribir. Enter, Tab y las flechas pasan a la siguiente, también a la del edificio siguiente. La 06.03 abre en 0.4 s en vez de 1 s, con un tercio de los controles.",
+        "Datos fijos › Tramos/Equipos: la lista de ubicaciones con «+ Tramo» se dibuja en un solo lienzo; la 17.02.02 abre en la mitad del tiempo.",
+        "Ubicaciones: cada edificio es una sola tarjeta dibujada (nombre, Editar, Eliminar, + tramo y niveles). La página abre en 0.2 s en vez de 0.9 s, y Refrescar tarda 0.08 s en vez de 0.7 s.",
+        "Apariencia: se quitó el interruptor «Usar la tabla clásica»; Registro de avance usa siempre la tabla nueva.",
+    ]),
     ("v1.23", [
         "Registro de avance con tabla nueva (virtual): solo se dibujan las filas que se ven. La 06.03 (374 filas) abre en 0.2 s en vez de 2.5–3 s, y deslizar y escribir son instantáneos aunque la partida tenga cientos de filas.",
         "La tabla ocupa el resto de la pantalla y se desliza por dentro; la tarjeta de la partida queda arriba y los títulos de columna quedan siempre a la vista.",
         "Se escribe igual: tocás la casilla y escribís; Enter o ↓ bajan a la siguiente, ↑ sube. Al bajar con Enter se selecciona el número (escribir lo reemplaza).",
         "Historial completo, niveles que se abren y cierran, Fechas con avance, Observaciones, «+ tramo», los colores y los cálculos funcionan igual.",
-        "Apariencia › «Tabla de Registro de avance»: interruptor «Usar la tabla clásica» para volver a la tabla anterior si algo de la nueva no te funciona.",
-    ]),
+        ]),
     ("v1.22", [
         "Registro de avance · «Historial completo»: a la izquierda queda fijo Ubicación, Contractual, Acum. ant., Acum. total, % avance y Saldo; a la derecha solo los días, en orden cronológico, y es lo único que se desliza en horizontal.",
         "Historial completo: un clic en un día lo vuelve editable en su misma columna (pasa a ser la fecha de registro y los totales se recalculan a esa fecha); las columnas no se mueven.",
@@ -1798,40 +1804,22 @@ class PaginaUbicaciones(Pagina):
                 etiqueta(self.lista, "Áreas sin nivel", 15, "bold").grid(row=r, column=0, sticky="w", pady=(14, 8))
                 r += 1
                 continue
-            t = ui.Tarjeta(self.lista)
-            t.grid(row=r, column=0, sticky="ew", pady=5)
-            r += 1
-            cab = tk.Frame(t, bg=col("tarjeta"))
-            cab.grid(row=0, column=0, columnspan=2, sticky="ew", padx=18, pady=(14, 6))
-            nom = etiqueta(cab, e["nombre"], 17, "bold", justify="left")
-            if not self.p.solo_agregar:
-                boton(cab, "Eliminar", ancho=80, alto=28, command=lambda e=e: self.eliminar(e)).pack(side="right")
-                boton(cab, "Editar", ancho=70, alto=28, command=lambda e=e: self.editar(e)).pack(side="right", padx=6)
-            nom.pack(side="left", fill="x", expand=True)
-            ui.ajustar_texto(nom, cab, lambda c=cab, n=nom: sum(w.winfo_reqwidth() + 8 for w in c.pack_slaves() if w is not n), 100)
+            # la tarjeta entera es un lienzo dibujado (nombre, botones y píldoras): un control por edificio
             niv = self.p.niveles_de(e["id"])
+            botones = [] if self.p.solo_agregar else [("Eliminar", 80, lambda e=e: self.eliminar(e)),
+                                                      ("Editar", 70, lambda e=e: self.editar(e))]
+            b_tramo = None if self.p.solo_agregar else ("+ tramo", 90, lambda e=e: self.nuevo_tramo(e))
             if e["es_area"] and self.p.area_simple(e, niv):
-                fila_a = tk.Frame(t, bg=col("tarjeta"))
-                fila_a.grid(row=1, column=0, columnspan=2, sticky="ew", padx=18, pady=(0, 14))
-                ui.lbl(fila_a, "Una sola ubicación", 12, color="texto2").pack(side="left")
-                if not self.p.solo_agregar:
-                    boton(fila_a, "+ tramo", ancho=90, alto=28, command=lambda e=e: self.nuevo_tramo(e)).pack(side="right")
+                info, chips, b_info = "Una sola ubicación", [], b_tramo
             elif e["es_area"]:
-                fila_a = tk.Frame(t, bg=col("tarjeta"))
-                fila_a.grid(row=1, column=0, columnspan=2, sticky="ew", padx=18, pady=(0, 6))
                 ntr = sum(1 for n in niv if n["nombre"] != core.NIVEL_UNICO)
-                ui.lbl(fila_a, f"{ntr} tramo" + ("" if ntr == 1 else "s"), 12, color="texto2").pack(side="left")
-                if not self.p.solo_agregar:
-                    boton(fila_a, "+ tramo", ancho=90, alto=28, command=lambda e=e: self.nuevo_tramo(e)).pack(side="right")
-                chips = ctk.CTkFrame(t, fg_color="transparent", height=1)
-                chips.grid(row=2, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 14))
-                ui.flujo(chips, [ui.chip(chips, core.nombre_nivel(e, n)) for n in niv], sep=6)
+                info, chips, b_info = f"{ntr} tramo" + ("" if ntr == 1 else "s"), \
+                    [core.nombre_nivel(e, n) for n in niv], b_tramo
             else:
-                ui.lbl(t, f"{len(niv)} niveles", 12, color="texto2").grid(row=1, column=0, columnspan=2, sticky="w",
-                                                                         padx=18, pady=(0, 6))
-                chips = ctk.CTkFrame(t, fg_color="transparent", height=1)
-                chips.grid(row=2, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 14))
-                ui.flujo(chips, [ui.chip(chips, n["nombre"]) for n in niv], sep=6)
+                info, chips, b_info = f"{len(niv)} niveles", [n["nombre"] for n in niv], None
+            TarjetaUbicacion(self.lista, e["nombre"], info, chips, botones, b_info).grid(row=r, column=0, sticky="ew",
+                                                                                         pady=5)
+            r += 1
 
 
 # =========================================================================
@@ -2193,10 +2181,10 @@ class PaginaDatosFijos(Pagina):
             etiqueta(lista, "% reconocido", 11, color="texto2").grid(row=fila, column=1, sticky="w", padx=8)
             fila += 1
             for k, (hid, vn, vp) in enumerate(hitos):
-                en = entrada(lista, vn, 260, placeholder_text="Nombre del hito")
-                en.grid(row=fila, column=0, pady=2, padx=(ind, 0), sticky="w")
-                ep = entrada(lista, vp, 90, justify="right")
-                ep.grid(row=fila, column=1, padx=8, pady=2)
+                en = ui.entrada_ligera(lista, vn, 260, "Nombre del hito", justify="left")   # livianas (tk)
+                en.grid(row=fila, column=0, pady=3, padx=(ind, 0), sticky="w", ipady=4)
+                ep = ui.entrada_ligera(lista, vp, 90)
+                ep.grid(row=fila, column=1, padx=8, pady=3, ipady=4)
                 etiqueta(lista, "%", 12, color="texto2").grid(row=fila, column=2, sticky="w")
                 b = ctk.CTkButton(lista, text="×", width=30, height=30, corner_radius=8, font=F(14), fg_color=C["suave"],
                                   hover_color=C["suave_h"], text_color=C["texto"],
@@ -2372,6 +2360,14 @@ class PaginaDatosFijos(Pagina):
         fila = 0
         palabra = "equipos" if es_eq else "tramos"
         vis = getattr(self, "_visibles", None)
+        pend = []
+
+        def volcar(fila):
+            if pend:
+                RenglonesLienzo(lista, list(pend)).grid(row=fila, column=0, sticky="w", pady=(2, 0))
+                pend.clear()
+                fila += 1
+            return fila
         for u in self.p.ubicaciones():
             if fija and u["nivel"] != fija:
                 continue
@@ -2379,10 +2375,6 @@ class PaginaDatosFijos(Pagina):
             filas = datos.get(nv, [])
             if vis is not None and nv not in vis and not filas:
                 continue
-            f = tk.Frame(lista, bg=col("tarjeta"))
-            f.grid(row=fila, column=0, sticky="w", pady=(6, 2))
-            fila += 1
-            ui.lbl(f, u["etiqueta"], 13, True).pack(side="left")
             suma = sum(x for x in (ui.leer_num(fl[2].get()) for fl in filas) if isinstance(x, float))
             info = f"{len(filas)} {palabra}" if filas else f"sin {palabra}"
             if suma:
@@ -2391,11 +2383,11 @@ class PaginaDatosFijos(Pagina):
                     info += f" de {fmt(cont[nv])} contractual"
                     if es_eq and abs(suma - cont[nv]) > 0.005:
                         info += "  ●"
-            ui.lbl(f, f"   {info}", 11, color="texto2").pack(side="left")
-            if not bloqueado:                # enlace liviano (como «+ tramo» en Registro)
-                b = ui.lbl(f, "+ Equipo" if es_eq else "+ Tramo", 12, True, "acento", cursor="hand2", padx=6, pady=3)
-                b.pack(side="left", padx=12)
-                b.bind("<Button-1>", lambda _, nv=nv: self._agregar_fila(tipo, nv))
+            # los renglones de ubicación se dibujan juntos en un lienzo (no 4 controles por ubicación)
+            pend.append((u["etiqueta"], info, None if bloqueado else ("+ Equipo" if es_eq else "+ Tramo"),
+                         lambda nv=nv: self._agregar_fila(tipo, nv)))
+            if filas:
+                fila = volcar(fila)
             ops_eq = ["(sin equipo)"] + [fl[1].get().strip().upper() for fl in self.equipos_ed.get(nv, [])
                                           if fl[1].get().strip()] if con_eq and not es_eq else None
             for k, fl in enumerate(filas):
@@ -2427,6 +2419,7 @@ class PaginaDatosFijos(Pagina):
                 if bloqueado:
                     for w in ws:
                         w.configure(state="disabled")
+        volcar(fila)
         return r
 
     def _agregar_fila(self, tipo, nv):
@@ -2618,6 +2611,7 @@ class PaginaDatosFijos(Pagina):
         tipos = [(tp, hs[0]["id"]) for tp, hs in self.p.tipos_hito(it["id"]) if tp]
         cant_t = self.p.cant_tipos_de(it["id"]) if tipos else {}
         k = 0
+        self._lienzos = []
         for e in self.p.edificios():
             niv_todos = self.p.niveles_de(e["id"])
             niv = [n for n in niv_todos if self._visibles is None or n["id"] in self._visibles]
@@ -2628,57 +2622,50 @@ class PaginaDatosFijos(Pagina):
             k += 1
             s = sum(cont.get(n["id"], 0) for n in niv if n["id"] in cont)
             hay = any(n["id"] in cont for n in niv)
-            cab = ctk.CTkFrame(tt, fg_color="transparent")
-            cab.grid(row=0, column=0, columnspan=2, sticky="ew", padx=16, pady=(12, 4))
-            etiqueta(cab, e["nombre"], 15, "bold").pack(side="left")
-            etiqueta(cab, fmt(s) if hay else "Sin asignar", 14, "bold", "texto" if hay else "texto2").pack(side="right")
-            for j, n in enumerate(niv, start=1):
+            filas = []
+            simple = self.p.area_simple(e, niv_todos)
+            for n in niv:
                 orig = cont.get(n["id"])
                 v = tk.StringVar(value=ui.txt_num(orig))
                 self.vars[n["id"]] = (v, orig)
-                fila = tk.Frame(tt, bg=col("tarjeta"))            # filas livianas (tk): abren mucho más rápido
-                fila.grid(row=j, column=0, columnspan=2, sticky="ew", padx=16,
-                          pady=(2, 14) if j == len(niv) else (2, 8 if tipos else 2))
-                fila.grid_columnconfigure(0, weight=1)
-                ln = ui.lbl(fila, "Área sin nivel" if self.p.area_simple(e, niv_todos) else core.nombre_nivel(e, n),
-                            13, bool(tipos))
-                ln.grid(row=0, column=0, sticky="w")
-                en = ui.entrada_ligera(fila, v, 130, "Sin asignar")
-                en.grid(row=0, column=1, sticky="e", ipady=4)
-                if bloqueado or (not editar and orig is not None):
-                    en.configure(state="disabled")
-                if tipos:
-                    vt_nv = []
-                    for q, (tp, hid0) in enumerate(tipos, start=1):
-                        o_t = cant_t.get((n["id"], tp))
-                        vt = tk.StringVar(value=ui.txt_num(o_t))
-                        self.vars_tipo[(n["id"], hid0)] = (vt, o_t, tp)
-                        vt_nv.append(vt)
-                        lt = ui.lbl(fila, tp, 12, color="texto2", justify="left", anchor="w")
-                        lt.grid(row=q, column=0, sticky="w", padx=(18, 8), pady=1)
-                        ui.ajustar_texto(lt, fila, 130 + 18 + 16, 80)
-                        et = ui.entrada_ligera(fila, vt, 110, "Sin asignar")
-                        et.grid(row=q, column=1, sticky="e", pady=1, ipady=3)
-                        if bloqueado or (not editar and o_t is not None):
-                            et.configure(state="disabled")
-
-                    def sumar_tipos(*_, v=v, en=en, vt_nv=vt_nv, orig=orig):
-                        nums = [ui.leer_num(x.get()) for x in vt_nv]
-                        if any(isinstance(x, float) for x in nums):
-                            tot = sum(x for x in nums if isinstance(x, float))
-                            v.set(ui.txt_num(round(tot, 6)))
-                            en.configure(state="disabled")
-                        elif not (bloqueado or (not editar and orig is not None)):
-                            en.configure(state="normal")
-                    for x in vt_nv:
-                        x.trace_add("write", sumar_tipos)
-                    sumar_tipos()
+                g = len(filas)
+                filas.append({"etiq": "Área sin nivel" if simple else core.nombre_nivel(e, n), "var": v,
+                              "negrita": bool(tipos), "fijo": bloqueado or (not editar and orig is not None)})
+                for tp, hid0 in tipos:
+                    o_t = cant_t.get((n["id"], tp))
+                    vt = tk.StringVar(value=ui.txt_num(o_t))
+                    self.vars_tipo[(n["id"], hid0)] = (vt, o_t, tp)
+                    filas.append({"etiq": tp, "var": vt, "sub": True, "grupo": g,
+                                  "fijo": bloqueado or (not editar and o_t is not None)})
+            # la tarjeta entera es un solo lienzo dibujado (como la tabla de Registro): una casilla real al tocar
+            lz = TarjetaLienzo(tt, e["nombre"], fmt(s) if hay else "Sin asignar", "texto" if hay else "texto2", filas,
+                               al_final=self._lienzo_siguiente)
+            lz.grid(row=0, column=0, columnspan=2, sticky="ew", padx=16, pady=(12, 12))
+            self._lienzos.append(lz)
         if not editar:
             self.v_estado.set("Carga inicial: las cantidades ya guardadas solo se modifican en «Editar datos fijos».")
         else:
             self.v_estado.set("Editar datos fijos: cada cambio queda en el historial.")
         if bloqueado:
             self.v_estado.set("Archivo de «Solo agregar avance»: los datos fijos no se pueden modificar.")
+
+    def _lienzo_siguiente(self, lz, d):
+        """Enter / ↓ en la última casilla de un edificio: sigue en el próximo (↑ en la primera: el anterior)."""
+        ls = getattr(self, "_lienzos", [])
+        i = ls.index(lz) if lz in ls else -1
+        otros = ls[i + 1:] if d > 0 else ls[:max(0, i)][::-1]
+        for o in otros:
+            if o.winfo_exists() and o.primera(d if d > 0 else -1):
+                try:                           # que la tarjeta quede a la vista
+                    cv = self.panel._parent_canvas
+                    alto = max(1, self.panel.winfo_height())
+                    y = o.winfo_rooty() - self.panel.winfo_rooty()
+                    v0, v1 = cv.yview()
+                    if not (v0 * alto <= y <= v1 * alto - o.winfo_height()):
+                        cv.yview_moveto(max(0.0, (y - 20) / alto))
+                except (tk.TclError, AttributeError):
+                    pass
+                return
 
     def guardar(self):
         if not self.p or not self.it or self.p.solo_agregar:
@@ -3032,7 +3019,7 @@ class PaginaRegistro(Pagina):
         return True
 
     def tabla_virtual(self):
-        return not self.app.cfg.get("tabla_clasica", False)
+        return True                     # la tabla virtual es la única (la clásica quedó solo como respaldo interno)
 
     def mostrar(self):
         for pn in (self.panel_s, self.panel_v):
@@ -5665,19 +5652,6 @@ class PaginaApariencia(Pagina):
                      "pone transparente); se usa el tamaño elegido aquí. Se aplica al reiniciar Ctrl-P.", 11,
                  color="texto2", wraplength=560, justify="left").grid(row=2, column=0, sticky="w", padx=22,
                                                                        pady=(8, 16))
-        # tabla de Registro: la nueva (rápida) o la clásica, por si hiciera falta volver mientras se ajusta
-        tt = ui.Tarjeta(self.cuerpo)
-        tt.grid(row=3, column=0, sticky="nw", pady=(16, 0))
-        etiqueta(tt, "Tabla de Registro de avance", 15, "bold").grid(row=0, column=0, sticky="w", padx=22, pady=(16, 2))
-        self.v_clasica = tk.BooleanVar(value=bool(app.cfg.get("tabla_clasica", False)))
-        fz = ctk.CTkFrame(tt, fg_color="transparent")
-        fz.grid(row=1, column=0, sticky="w", padx=22, pady=(6, 0))
-        ui.Interruptor(fz, self.v_clasica, comando=self._elegir_tabla).pack(side="left")
-        etiqueta(fz, "Usar la tabla clásica", 13).pack(side="left", padx=(10, 0))
-        etiqueta(tt, "La tabla nueva dibuja solo las filas que se ven: abre y se desliza rápido aunque la partida tenga "
-                     "cientos de filas. La clásica es la de antes (más lenta); dejala apagada salvo que algo de la nueva "
-                     "no te funcione.", 11, color="texto2", wraplength=560, justify="left").grid(
-            row=2, column=0, sticky="w", padx=22, pady=(8, 16))
         t2 = ui.Tarjeta(self.cuerpo)
         t2.grid(row=1, column=0, sticky="nw", pady=(16, 0))
         etiqueta(t2, "Actualizaciones", 15, "bold").grid(row=0, column=0, columnspan=3, sticky="w", padx=22, pady=(16, 2))
@@ -5688,12 +5662,6 @@ class PaginaApariencia(Pagina):
         etiqueta(t2, "Al abrir, Ctrl-P revisa si hay una versión nueva (si no hay internet, no molesta). Actualizar "
                      "nunca es obligatorio y no toca tus proyectos ni la carpeta CTRL-P DOC.", 11, color="texto2",
                  wraplength=560, justify="left").grid(row=2, column=0, columnspan=3, sticky="w", padx=22, pady=(8, 16))
-
-    def _elegir_tabla(self):
-        self.app.cfg = core.config_poner(tabla_clasica=bool(self.v_clasica.get()))
-        pg = self.app.paginas.get("registro")
-        if pg is not None and pg.it:
-            pg._rearmar_conservando()           # lo escrito y sin guardar se conserva
 
     ZOOMS = (0.9, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0)
 

@@ -13,9 +13,10 @@ from kivy.uix.widget import Widget
 
 import ctrlp_core as core
 import dibujos
+from tarjeta_lig import TarjetaUbicacionK
 import ui_k as ui
 from tabla import Tabla, filas_presupuesto
-from ui_k import (Boton, Campo, Chip, Columna, Contador, Desplazable, Espacio, Etiqueta, Fila, Flujo, Interruptor,
+from ui_k import (Boton, Campo, Columna, Contador, Desplazable, Espacio, Etiqueta, Fila, Interruptor,
                   Segmentado, Tarjeta, fmt, rgba)
 
 
@@ -532,32 +533,20 @@ class PaginaUbicaciones(Pagina):
             if e is None:
                 self.lista.add_widget(Etiqueta("Áreas sin nivel", 16, True))
                 continue
-            t = Tarjeta(relleno=16, espacio=6)
-            cab = Fila(alto=40)
-            cab.add_widget(Etiqueta(e["nombre"], 18, True))
-            if not self.p.solo_agregar:
-                cab.add_widget(Boton("Editar", ancho=90, alto=38, al_tocar=lambda e=e: self.editar(e)))
-                cab.add_widget(Boton("Eliminar", ancho=100, alto=38, al_tocar=lambda e=e: self.eliminar(e)))
-            t.add_widget(cab)
+            # la tarjeta entera se dibuja (nombre, botones y niveles): un solo control por edificio
             niv = self.p.niveles_de(e["id"])
+            botones = [] if self.p.solo_agregar else [("Eliminar", 100, lambda e=e: self.eliminar(e)),
+                                                      ("Editar", 90, lambda e=e: self.editar(e))]
+            b_tramo = None if self.p.solo_agregar else ("+ tramo", 110, lambda e=e: self.nuevo_tramo(e))
             if e["es_area"] and self.p.area_simple(e, niv):
-                r = Fila(alto=40)
-                r.add_widget(Etiqueta("Una sola ubicación", 13, color="texto2"))
-                if not self.p.solo_agregar:
-                    r.add_widget(Boton("+ tramo", ancho=110, alto=38, al_tocar=lambda e=e: self.nuevo_tramo(e)))
-                t.add_widget(r)
+                info, chips, b_info = "Una sola ubicación", [], b_tramo
             elif e["es_area"]:
                 ntr = sum(1 for n in niv if n["nombre"] != core.NIVEL_UNICO)
-                r = Fila(alto=40)
-                r.add_widget(Etiqueta(f"{ntr} tramo" + ("" if ntr == 1 else "s"), 13, color="texto2"))
-                if not self.p.solo_agregar:
-                    r.add_widget(Boton("+ tramo", ancho=110, alto=38, al_tocar=lambda e=e: self.nuevo_tramo(e)))
-                t.add_widget(r)
-                t.add_widget(Flujo([Chip(core.nombre_nivel(e, n)) for n in niv]))
+                info, chips, b_info = f"{ntr} tramo" + ("" if ntr == 1 else "s"), \
+                    [core.nombre_nivel(e, n) for n in niv], b_tramo
             else:
-                t.add_widget(Etiqueta(f"{len(niv)} niveles", 13, color="texto2"))
-                t.add_widget(Flujo([Chip(n["nombre"]) for n in niv]))
-            self.lista.add_widget(t)
+                info, chips, b_info = f"{len(niv)} niveles", [n["nombre"] for n in niv], None
+            self.lista.add_widget(TarjetaUbicacionK(e["nombre"], info, chips, botones, b_info))
 
 
 # =========================================================================
