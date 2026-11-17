@@ -439,6 +439,10 @@ class PaginaInformes(Pagina):
             cols.append(("unidad", "Unid.", 60, "center"))
         if "cantidad" in vis:
             cols.append(("cantidad", "Cantidad", 104, "right"))
+        # el avance financiero va junto al ejecutado del período, a la vista sin deslizar la tabla
+        cols.append(("per", "Ejecutado del día" if estado else "Período", 112, "right"))
+        cols += [("m_per", "Monto del día" if estado else "Monto período", 124, "right"),
+                 ("aporte", "% aporte", 84, "right")]
         if not estado and "ant" in vis:
             cols.append(("ant", "Acum. anterior", 112, "right"))
         if not estado and "p_ant" in vis:
@@ -447,7 +451,6 @@ class PaginaInformes(Pagina):
         for k, (et, b0, b1) in enumerate(cortes):
             cols.append((f"b{k}", et, 96, "right"))
             ex_b.append(self.p.ejecutado_periodo(b0, b1, self.sw_contr.activo))
-        cols.append(("per", "Ejecutado del día" if estado else "Período", 112, "right"))
         if not estado and "p_per" in vis:
             cols.append(("p_per", "% período", 86, "right"))
         if "tot" in vis:
@@ -456,8 +459,6 @@ class PaginaInformes(Pagina):
             cols.append(("p_tot", "%", 78, "right"))
         if "saldo" in vis:
             cols.append(("saldo", "Saldo", 104, "right"))
-        cols += [("m_per", "Monto del día" if estado else "Monto período", 124, "right"),
-                 ("aporte", "% aporte", 84, "right")]
         keys = self._nueva_tabla(cols)
         tp = calc.total_presu or 1
         filtro = self._filtro()

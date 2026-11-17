@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.4.4"
+VERSION_INTERNA = "1.4.5"
 
 CAMBIOS = [
+    ("1.4.5", [
+        "Informes: «Monto período» y «% aporte» van junto a «Período», a la vista sin deslizar la tabla (antes quedaban al final, fuera de la pantalla).",
+    ]),
     ("1.4.4", [
         "Informes: con «Solo lo contractual» apagado, el excedente (lo ejecutado por encima de lo contractual) ahora sí suma en los montos del período y acumulados. Encendido, siguen siendo solo los montos cobrables.",
     ]),
