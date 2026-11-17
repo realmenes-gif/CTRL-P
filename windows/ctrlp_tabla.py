@@ -106,14 +106,17 @@ class TablaVirtual(tk.Frame):
         self.grid_rowconfigure(1, weight=1)
         self.cv_i = tk.Canvas(self, bg=col("tarjeta"), highlightthickness=0, bd=0)
         self.cv_d = tk.Canvas(self, bg=col("tarjeta"), highlightthickness=0, bd=0)
-        self.sb_h = ctk.CTkScrollbar(self, orientation="horizontal", height=12, command=self._xview,
-                                     button_color=col("borde"))
+        # barra horizontal: abajo, fija y siempre visible (fina y algo oscura para que se vea sin tapar la tabla)
+        self.sb_h = ctk.CTkScrollbar(self, orientation="horizontal", height=10, command=self._xview,
+                                     fg_color=col("suave"), button_color=col("punto"), border_spacing=1,
+                                     button_hover_color=col("texto2"), corner_radius=5)
         self.sb_v = ctk.CTkScrollbar(self, orientation="vertical", width=12, command=self._yview,
                                      button_color=col("borde"))
         self.cv_i.grid(row=1, column=0, sticky="ns")
         self.cv_d.grid(row=1, column=1, sticky="nsew")
         self.sb_v.grid(row=1, column=2, sticky="ns")
-        self._sb_h_vis = False
+        self.sb_h.grid(row=2, column=1, sticky="ew", pady=(4, 2))
+        self._sb_h_vis = True
         for cv in (self.cv_i, self.cv_d):
             cv.bind("<Configure>", lambda _: self.marcar(), add="+")
             cv.bind("<MouseWheel>", self._rueda)
@@ -295,14 +298,7 @@ class TablaVirtual(tk.Frame):
         # barras
         tot = max(1, self._alto_total)
         self.sb_v.set(self._yoff / tot, min(1.0, (self._yoff + h) / tot))
-        hace_falta = self.ancho_der > wd + 1
-        if hace_falta and not self._sb_h_vis:
-            self.sb_h.grid(row=0, column=1, sticky="ew")
-            self._sb_h_vis = True
-        elif not hace_falta and self._sb_h_vis:
-            self.sb_h.grid_remove()
-            self._sb_h_vis = False
-        if self._sb_h_vis:
+        if True:                        # siempre visible (llena cuando todo entra)
             self.sb_h.set(self._xoff / max(1, self.ancho_der), min(1.0, (self._xoff + wd) / max(1, self.ancho_der)))
         # filas visibles
         i0 = max(0, bisect.bisect_right(self._y, self._yoff) - 1)

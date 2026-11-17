@@ -32,12 +32,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.24"
-VERSION_INTERNA = "1.24"
+VERSION = "v1.25"
+VERSION_INTERNA = "1.25"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.25", [
+        "Registro de avance: la barra de desplazamiento horizontal queda abajo de la tabla, fija y siempre visible, fina y más oscura. Ya no tapa los títulos de las fechas.",
+    ]),
     ("v1.24", [
         "Datos fijos: cada edificio es una sola tarjeta dibujada (como la tabla de Registro); al hacer clic en una casilla aparece la casilla para escribir. Enter, Tab y las flechas pasan a la siguiente, también a la del edificio siguiente. La 06.03 abre en 0.4 s en vez de 1 s, con un tercio de los controles.",
         "Datos fijos › Tramos/Equipos: la lista de ubicaciones con «+ Tramo» se dibuja en un solo lienzo; la 17.02.02 abre en la mitad del tiempo.",
