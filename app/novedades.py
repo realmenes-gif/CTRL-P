@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.4.0"
+VERSION_INTERNA = "1.4.1"
 
 CAMBIOS = [
+    ("1.4.1", [
+        "Ceros: en Registro de avance y Datos fijos, un 0 escrito se borra solo al salir de la casilla y no cuenta como avance; los 0 ya guardados se ven como casilla vacía.",
+    ]),
     ("1.4.0", [
         "Informes: los botones de opciones van en una barra que se despliega con «Opciones ▼». Cerrada, muestra en una línea lo elegido (período, detalle, vista y qué se muestra) y la tabla tiene mucho más lugar.",
         "Informes: «Ocultar resumen» pasó a la barra de arriba y los indicadores debajo de la gráfica quedan del alto de su texto (la gráfica no cambia).",

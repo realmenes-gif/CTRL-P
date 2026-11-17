@@ -30,12 +30,17 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.19"
-VERSION_INTERNA = "1.19"
+VERSION = "v1.20"
+VERSION_INTERNA = "1.20"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.20", [
+        "Registro de avance: «Semana» y «Mes» se reemplazan por «Historial completo». Muestra lo de cada día con avance de la partida, fila por fila, a la derecha de los totales (del más reciente al más viejo) y se desliza en horizontal. Solo se escribe en «Del día», que es la fecha de registro; un clic en la fecha de una columna te lleva a ese día.",
+        "Se quitó el interruptor «Ver otras fechas (4)»: lo reemplaza «Historial completo».",
+        "Ceros: en Registro de avance y Datos fijos, un 0 escrito se borra solo al salir de la casilla y no cuenta como avance. Los 0 que ya estaban guardados se ven como casilla vacía y ya no aparecen en «Fechas con avance» ni marcan la partida con ✓.",
+    ]),
     ("v1.19", [
         "Registro de avance: «Ver otras fechas» (en la barra de abajo) agrega, al lado de «Del día», lo que ingresaste en las 4 fechas anteriores con avance de esa partida, fila por fila, para comparar mientras escribís. Un clic en la fecha de la columna te lleva a ese día. Se ingresa igual que siempre en «Del día».",
     ]),
@@ -268,6 +273,7 @@ class App(ctk.CTk):
         for k in ("<Control-s>", "<Control-S>"):
             self.bind_all(k, self.guardar_todo, add="+")
         self.bind_all("<F5>", self.refrescar_actual, add="+")
+        self.bind_class("Entry", "<FocusOut>", self._cero_vacio, add="+")
         for k in ("<Return>", "<KP_Enter>"):
             self.bind_all(k, self._enter_baja, add="+")
         self.contenido = ctk.CTkFrame(self, fg_color=C["fondo"], corner_radius=0)
@@ -418,6 +424,28 @@ class App(ctk.CTk):
         cv.create_polygon(pts, smooth=True, fill=fondo, outline="", tags=("refrescar",))
         cv.create_text((x0 + x1) // 2, y + 17, text="↻" if comp else "↻ Refrescar", fill=texto,
                        font=(ui.FAM, 12 if comp else 10, "bold"), tags=("refrescar",))
+
+    PAGINAS_CERO = ("registro", "datos")
+
+    def _cero_vacio(self, e):
+        """Un 0 escrito en una cantidad (avance, contractual…) se borra: la casilla queda vacía y no se registra."""
+        w = e.widget
+        if self.pagina not in self.PAGINAS_CERO:
+            return
+        try:
+            if str(w.cget("state")) == "disabled":
+                return
+            t = w.get().strip().replace(",", "")
+        except (tk.TclError, AttributeError):
+            return
+        if not t:
+            return
+        try:
+            cero = abs(float(t)) < 1e-12
+        except ValueError:
+            return
+        if cero:
+            w.delete(0, "end")
 
     PAGINAS_ENTER = ("registro", "datos", "ubicaciones")
 
@@ -2694,11 +2722,11 @@ class PaginaRegistro(Pagina):
         self.totales_viejos = False
         caja = ctk.CTkFrame(self.cab, fg_color="transparent")
         caja.grid(row=0, column=1, rowspan=2, sticky="e")
-        # Ver: Día (se edita) · Semana / Mes (solo lectura, suma del período)
+        # Ver: Día · Historial completo (una columna por cada día con avance; se escribe solo en la fecha de registro)
         etiqueta(caja, "Ver", 11, color="texto2").grid(row=0, column=0, sticky="w")
         self.v_vista = tk.StringVar(value="Día")
-        ui.segmentado(caja, ["Día", "Semana", "Mes"], self.v_vista, 180, cmd=lambda _: self._cambiar_vista()).grid(
-            row=1, column=0, padx=(0, 14))
+        ui.segmentado(caja, ["Día", "Historial completo"], self.v_vista, 230,
+                      cmd=lambda _: self._cambiar_vista()).grid(row=1, column=0, padx=(0, 14))
         self.v_tit_fecha = tk.StringVar(value="Fecha de registro")
         etiqueta(caja, "", 11, color="texto2", textvariable=self.v_tit_fecha).grid(row=0, column=1, columnspan=5,
                                                                                   sticky="w", padx=(40, 0))
@@ -2743,21 +2771,10 @@ class PaginaRegistro(Pagina):
         sw.pack(side="right", padx=(0, 24))
         ui.Interruptor(sw, self.v_obs, comando=self._toggle_obs).pack(side="right")
         etiqueta(sw, "Observaciones", 12, color="texto2").pack(side="right", padx=(0, 8))
-        # comparar con lo ingresado en otras fechas (columnas al lado de «Del día»)
-        self.v_cmp = tk.BooleanVar(value=app.cfg.get("registro_comparar", True))
-        sw2 = ctk.CTkFrame(b, fg_color="transparent")
-        sw2.pack(side="right", padx=(0, 24))
-        ui.Interruptor(sw2, self.v_cmp, comando=self._toggle_cmp).pack(side="right")
-        etiqueta(sw2, f"Ver otras fechas ({self.N_COMPARAR})", 12, color="texto2").pack(side="right", padx=(0, 8))
+
         caja.pack(side="left", fill="x", expand=True)
         self.it = None
         self.filas = {}
-
-    N_COMPARAR = 4              # fechas con avance que se muestran para comparar
-
-    def _toggle_cmp(self):
-        self.app.cfg = core.config_poner(registro_comparar=bool(self.v_cmp.get()))
-        self._rearmar_conservando()
 
     def _toggle_obs(self):
         self.app.cfg = core.config_poner(ver_observaciones=bool(self.v_obs.get()))
@@ -2799,7 +2816,8 @@ class PaginaRegistro(Pagina):
     def _marcas_dia(self):
         d0, d1 = self.periodo()
         self.arbol.marcas = {r[0]: "✓" for r in self.p.con.execute(
-            "SELECT DISTINCT item FROM avances WHERE fecha>=? AND fecha<=?", (d0, d1))}
+            "SELECT DISTINCT item FROM avances WHERE fecha>=? AND fecha<=? AND (ABS(cantidad)>1e-9 OR obs<>'')",
+            (d0, d1))}
 
     # ---- fecha
     def cambiar_fecha(self):
@@ -2836,7 +2854,7 @@ class PaginaRegistro(Pagina):
 
     # ---- vista por día / semana / mes
     def solo_lectura(self):
-        return self.v_vista.get() != "Día"
+        return False                # el historial completo se mira; la fecha de registro se sigue escribiendo
 
     def periodo(self):
         """(desde, hasta) de lo que se ve: el día, su semana (según el proyecto) o su mes."""
@@ -2865,21 +2883,7 @@ class PaginaRegistro(Pagina):
             self.v_tit_fecha.set("Fecha de registro")
 
     def _cambiar_vista(self):
-        nueva = self.v_vista.get()
-        antes = getattr(self, "_vista_ant", "Día")
-        if nueva == antes:
-            return
-        if antes == "Día" and self.it and self.filas and self.pendientes(como_dia=True):
-            self.v_vista.set("Día")              # se pregunta con la vista del día (lo escrito está ahí)
-            if not self.puede_salir():
-                return
-            self.v_vista.set(nueva)
-            self.filas = {}
-        self._vista_ant = nueva
-        self._titulo_fecha()
-        self._marcas_dia()
-        self.arbol.cargar()
-        self.mostrar()
+        self._rearmar_conservando()             # lo escrito y sin guardar se conserva
 
     # ---- fechas con avance de la partida
     def _menu_fechas(self):
@@ -2888,7 +2892,7 @@ class PaginaRegistro(Pagina):
             return
         filas = self.p.con.execute(
             "SELECT a.fecha, COUNT(DISTINCT a.nivel) n, SUM(a.cantidad * COALESCE(h.pct / 100.0, 1.0)) s, "
-            "MAX(a.marca<>'') pl FROM avances a LEFT JOIN hitos h ON h.id = a.hito WHERE a.item=? "
+            "MAX(a.marca<>'') pl FROM avances a LEFT JOIN hitos h ON h.id = a.hito WHERE a.item=? AND ABS(a.cantidad)>1e-9 "
             "GROUP BY a.fecha ORDER BY a.fecha DESC", (self.it["id"],)).fetchall()
         m = tk.Menu(self, tearoff=False, font=TF(10), bg=col("tarjeta"), fg=col("texto"),
                     activebackground=col("sel"), activeforeground=col("texto"))
@@ -2946,7 +2950,7 @@ class PaginaRegistro(Pagina):
             if orig is None:
                 if (v is not None and abs(v) > 1e-9) or o:
                     n += 1
-            elif v is None or abs(v - (orig["cantidad"] or 0)) > 1e-9 or o != (orig["obs"] or ""):
+            elif abs((v or 0.0) - (orig["cantidad"] or 0)) > 1e-9 or o != (orig["obs"] or ""):
                 n += 1
         return n
 
@@ -3035,30 +3039,28 @@ class PaginaRegistro(Pagina):
         tab = tk.Frame(envol.interior, bg=bg, highlightthickness=1, highlightbackground=col("borde"))
         tab.pack(fill="both", expand=True)
         ver_obs = bool(self.v_obs.get())
-        # comparar: lo ingresado en las últimas fechas con avance, al lado de «Del día» (solo para mirar)
-        fechas_cmp, datos_cmp = [], {}
-        if not lectura and bool(self.v_cmp.get()):
-            fechas_cmp = [r[0] for r in p.con.execute(
-                "SELECT DISTINCT fecha FROM avances WHERE item=? AND fecha<? ORDER BY fecha DESC LIMIT ?",
-                (iid, self.fecha, self.N_COMPARAR))][::-1]
-            if len(fechas_cmp) < self.N_COMPARAR:
-                fechas_cmp += [r[0] for r in p.con.execute(
-                    "SELECT DISTINCT fecha FROM avances WHERE item=? AND fecha>? ORDER BY fecha LIMIT ?",
-                    (iid, self.fecha, self.N_COMPARAR - len(fechas_cmp)))]
-            if fechas_cmp:
-                q = ",".join("?" * len(fechas_cmp))
-                for r in p.con.execute(
-                        f"SELECT fecha, nivel, equipo, tramo, hito, SUM(cantidad) s FROM avances WHERE item=? "
-                        f"AND fecha IN ({q}) GROUP BY fecha, nivel, equipo, tramo, hito", [iid] + fechas_cmp):
-                    datos_cmp[(r["fecha"], r["nivel"], r["equipo"] or "", r["tramo"] or "", r["hito"] or "")] = r["s"]
-        NC = len(fechas_cmp)
+        # historial completo: una columna por cada día con avance, en orden; la de la fecha de registro se escribe
+        datos_cmp = {}
+        fechas_todas = [self.fecha]
+        if self.v_vista.get() == "Historial completo":
+            for r in p.con.execute(
+                    "SELECT fecha, nivel, equipo, tramo, hito, SUM(cantidad) s FROM avances WHERE item=? AND fecha<>? "
+                    "GROUP BY fecha, nivel, equipo, tramo, hito HAVING ABS(SUM(cantidad))>1e-9", (iid, self.fecha)):
+                datos_cmp[(r["fecha"], r["nivel"], r["equipo"] or "", r["tramo"] or "", r["hito"] or "")] = r["s"]
+            fechas_todas = sorted({k[0] for k in datos_cmp} | {self.fecha})
+        # «Del día» (se escribe) y los totales quedan a la vista; los demás días van a la derecha, del más
+        # reciente al más viejo, y se ven deslizando la tabla
+        hist = sorted((f for f in fechas_todas if f != self.fecha), reverse=True)
+        NH = len(hist)
+        NT = NH + 1
+        col_fecha = {f: 8 + k for k, f in enumerate(hist)}
 
-        def CK(k):                  # columna real: las de comparar van justo después de «Del día»
-            return k if k <= 3 else k + NC
+        def CK(k):
+            return k if k < 8 else k + NH
         self._ck = CK
         anchos = (96, 0, 0, 0, 0, 0, 0, 0, 80)
         titulos = ("Ubicación", "Contractual", "Acum. ant.",
-                   {"Semana": "De la semana", "Mes": "Del mes"}.get(self.v_vista.get(), "Del día"),
+                   "Del día",
                    "Acum. total", "% avance", "", "Saldo", "Observación")
         for k, (tt, a) in enumerate(zip(titulos, anchos)):
             if k == 8 and not ver_obs:
@@ -3068,10 +3070,11 @@ class PaginaRegistro(Pagina):
             tab.grid_columnconfigure(CK(k), weight=1 if k == (8 if ver_obs else 0) else 0, minsize=a)
             tk.Label(tab, text=tt, bg=col("subtotal"), fg=col("acento") if k == 3 else col("texto2"),
                      font=TF(9, "bold"), anchor="w" if k in (0, 8) else "e", padx=6, pady=8).grid(row=0, column=CK(k), sticky="nsew")
-        for j, fc in enumerate(fechas_cmp):
-            lt = tk.Label(tab, text=core.fecha_txt(fc)[:5] + " ↗", bg=col("subtotal"), fg=col("texto2"),
+        for fc in hist:
+            tab.grid_columnconfigure(col_fecha[fc], minsize=int(84 * ui.ZOOM))
+            lt = tk.Label(tab, text=core.fecha_txt(fc)[:5], bg=col("subtotal"), fg=col("texto2"),
                           font=TF(9, "bold"), anchor="e", padx=6, pady=8, cursor="hand2")
-            lt.grid(row=0, column=4 + j, sticky="nsew")
+            lt.grid(row=0, column=col_fecha[fc], sticky="nsew")
             lt.bind("<Button-1>", lambda _, f=fc: self._ir_a_fecha(f))
         self._fila_tab = 1
         self.labels_grupo = {}
@@ -3098,8 +3101,8 @@ class PaginaRegistro(Pagina):
                     lab[k] = tk.Label(tab, text="", bg=fondo, fg=col("texto"), font=TF(10, "bold" if bold else "normal"),
                                       anchor="e", padx=6, width=ANCHO_NUM if k != 8 else 0)
                     lab[k].grid(row=r, column=CK(k), sticky="nsew")
-                for j in range(NC):
-                    tk.Label(tab, text="", bg=fondo, width=ANCHO_NUM - 2).grid(row=r, column=4 + j, sticky="nsew")
+                if NH:
+                    tk.Label(tab, text="", bg=fondo).grid(row=r, column=8, columnspan=NH, sticky="nsew")
             cola.append(armar)
             self._fila_tab += 1
             return lab
@@ -3112,7 +3115,7 @@ class PaginaRegistro(Pagina):
                 pv = per_h.get(key)
                 v = tk.StringVar(value="" if not pv else ui.txt_num(pv))
             else:
-                v = tk.StringVar(value="" if orig is None else ui.txt_num(orig["cantidad"]))
+                v = tk.StringVar(value="" if orig is None or not orig["cantidad"] else ui.txt_num(orig["cantidad"]))
             o = tk.StringVar(value="" if orig is None else (orig["obs"] or ""))
             pl = plano_h.get(key, 0.0)
             etq = " " * indent + texto + (f"  (+{fmt(pl)} en plano)" if abs(pl) > 1e-9 else "")
@@ -3135,15 +3138,16 @@ class PaginaRegistro(Pagina):
                              bg=col("campo"), fg=col("texto"), insertbackground=col("texto"), highlightthickness=1,
                              highlightbackground=col("campo_borde"), highlightcolor=col("acento"), width=9,
                              disabledbackground=col("suave"), disabledforeground=col("texto2"))
-                e.grid(row=r, column=3, sticky="ew", padx=6, pady=4, ipady=3)
+                e.grid(row=r, column=CK(3), sticky="ew", padx=6, pady=4, ipady=3)
                 for k in (4, 5, 7):
                     lab[k] = tk.Label(tab, text="", bg=bg, fg=col("texto"), font=TF(10), anchor="e", padx=6,
                                       width=ANCHO_NUM)
                     lab[k].grid(row=r, column=CK(k), sticky="nsew")
-                for j, fc in enumerate(fechas_cmp):
+                for fc in hist:
                     vc = datos_cmp.get((fc,) + key)
-                    tk.Label(tab, text=fmt(vc) if vc else "", bg=bg, fg=col("texto2"), font=TF(10), anchor="e",
-                             padx=6, width=ANCHO_NUM - 2).grid(row=r, column=4 + j, sticky="nsew")
+                    if vc:                      # solo los días con algo: la tabla sigue liviana
+                        tk.Label(tab, text=fmt(vc), bg=bg, fg=col("texto2"), font=TF(10), anchor="e",
+                                 padx=6, width=ANCHO_NUM - 2).grid(row=r, column=col_fecha[fc], sticky="nsew")
                 eo = None
                 if ver_obs and not lectura:          # la casilla de observación solo se crea si se ve
                     eo = tk.Entry(tab, textvariable=o, font=TF(10), relief="flat", bg=bg, fg=col("texto"), width=6,
@@ -3156,7 +3160,7 @@ class PaginaRegistro(Pagina):
                     if eo is not None:
                         eo.configure(state="disabled")
                 fila["entry"] = e
-                tk.Frame(tab, height=1, bg=col("linea")).grid(row=r + 1, column=0, columnspan=9 + NC, sticky="ew")
+                tk.Frame(tab, height=1, bg=col("linea")).grid(row=r + 1, column=0, columnspan=9 + NT - 1, sticky="ew")
                 if fila.get("pintar"):
                     self._pintar_fila(fila)
             cola.append(armar)
@@ -3295,6 +3299,7 @@ class PaginaRegistro(Pagina):
         def fin():
             self._plegar_niveles(tab, iid, rangos_nv, con_av)
             self.recalcular()
+
         self._armar_por_tandas(cola, fin)
 
     # Windows no dibuja una ventana de más de 32 767 px de alto: con muchos niveles y detalle (tipos, hitos,

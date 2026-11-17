@@ -243,6 +243,17 @@ def textura(pil):
 # =========================================================================
 #  Campos
 # =========================================================================
+def es_cero(t):
+    """El texto es un cero escrito («0», «0.00», «-0»…)."""
+    t = (t or "").strip().replace(",", "")
+    if not t:
+        return False
+    try:
+        return abs(float(t)) < 1e-12
+    except ValueError:
+        return False
+
+
 class Campo(TextInput):
     mayus = BooleanProperty(False)
     numerico = BooleanProperty(False)
@@ -293,6 +304,8 @@ class Campo(TextInput):
     def _foco(self, *_):
         self._c_borde.rgba = rgba("acento") if self.focus else rgba("campo_borde")
         self._borde.width = 1.6 if self.focus else 1
+        if not self.focus and self.numerico and es_cero(self.text):
+            self.text = ""                  # un 0 no es avance ni cantidad: la casilla queda vacía
 
     def marcar(self, color_k):
         """Borde de color (rojo = error, acento = escrito)."""

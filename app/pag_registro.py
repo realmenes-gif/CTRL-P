@@ -60,8 +60,13 @@ class CampoTabla(TextInput):
         with self.canvas.after:
             self._cb = Color(*rgba("campo_borde"))
             self._ln = Line(width=1)
-        self.bind(pos=self._borde, size=self._borde, focus=lambda *_: self.pintar(self._estado_borde))
+        self.bind(pos=self._borde, size=self._borde, focus=self._al_foco)
         self._estado_borde = ""
+
+    def _al_foco(self, *_):
+        if not self.focus and self.numerico and ui.es_cero(self.text):
+            self.text = ""                  # un 0 no es avance: la casilla queda vacía
+        self.pintar(self._estado_borde)
 
     def _borde(self, *_):
         self._ln.rounded_rectangle = (self.x, self.y, self.width, self.height, dp(6))
@@ -296,7 +301,7 @@ class PaginaRegistro(Pagina):
 
     def _marcas_dia(self):
         self.arbol.marcas = {r[0]: "✓" for r in self.p.con.execute(
-            "SELECT DISTINCT item FROM avances WHERE fecha=?", (self.fecha,))}
+            "SELECT DISTINCT item FROM avances WHERE fecha=? AND (ABS(cantidad)>1e-9 OR obs<>'')", (self.fecha,))}
 
     def cambiar_fecha(self):
         try:
@@ -349,7 +354,7 @@ class PaginaRegistro(Pagina):
             if orig is None:
                 if (v is not None and abs(v) > 1e-9) or o:
                     n += 1
-            elif v is None or abs(v - (orig["cantidad"] or 0)) > 1e-9 or o != (orig["obs"] or ""):
+            elif abs((v or 0.0) - (orig["cantidad"] or 0)) > 1e-9 or o != (orig["obs"] or ""):
                 n += 1
         return n
 
@@ -496,7 +501,7 @@ class PaginaRegistro(Pagina):
             orig = hoy.get(key)
             pl = plano_h.get(key, 0.0)
             etq = " " * indent + texto + (f"  (+{fmt(pl)} en plano)" if abs(pl) > 1e-9 else "")
-            self.modelo[key] = {"v": "" if orig is None else txt_num(orig["cantidad"]),
+            self.modelo[key] = {"v": "" if orig is None or not orig["cantidad"] else txt_num(orig["cantidad"]),
                                 "obs": "" if orig is None else (orig["obs"] or ""), "orig": orig,
                                 "ant": ant_h.get(key, 0.0), "plano": pl, "factor": factor, "base": base, "nivel": nv,
                                 "edificio": edificio, "es_hito": bool(hi),

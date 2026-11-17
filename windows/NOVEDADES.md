@@ -1,4 +1,10 @@
-## Ctrl-P v1.19 (Windows)
+## Ctrl-P v1.20 (Windows)
+
+- Registro de avance: «Semana» y «Mes» se reemplazan por «Historial completo». Muestra lo de cada día con avance de la partida, fila por fila, a la derecha de los totales (del más reciente al más viejo) y se desliza en horizontal. Solo se escribe en «Del día», que es la fecha de registro; un clic en la fecha de una columna te lleva a ese día.
+- Se quitó el interruptor «Ver otras fechas (4)»: lo reemplaza «Historial completo».
+- Ceros: en Registro de avance y Datos fijos, un 0 escrito se borra solo al salir de la casilla y no cuenta como avance. Los 0 que ya estaban guardados se ven como casilla vacía y ya no aparecen en «Fechas con avance» ni marcan la partida con ✓.
+
+### Incluye lo de la v1.19
 
 - Registro de avance: «Ver otras fechas» (en la barra de abajo) agrega, al lado de «Del día», lo que ingresaste en las 4 fechas anteriores con avance de esa partida, fila por fila, para comparar mientras escribís. Un clic en la fecha de la columna te lleva a ese día. Se ingresa igual que siempre en «Del día».
 

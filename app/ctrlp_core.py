@@ -1501,7 +1501,8 @@ class Proyecto:
         return True
 
     def fechas_con_avance(self):
-        return [r[0] for r in self.con.execute("SELECT DISTINCT fecha FROM avances ORDER BY fecha")]
+        return [r[0] for r in self.con.execute("SELECT DISTINCT fecha FROM avances WHERE ABS(cantidad)>1e-9 "
+                                               "ORDER BY fecha")]          # un 0 no cuenta como avance
 
     def ejecutado(self, hasta=None, desde=None):
         """{item: {nivel: cantidad equivalente}} entre desde y hasta (incluidas).
