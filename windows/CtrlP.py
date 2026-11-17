@@ -24,18 +24,26 @@ import ctrlp_core as core
 import ctrlp_excel as xl
 import ctrlp_memoria as mc
 import ctrlp_ui as ui
+import ctrlp_tabla
 import ctrlp_planos as pl
 import ctrlp_actualizar as act_
 import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.22"
-VERSION_INTERNA = "1.22"
+VERSION = "v1.23"
+VERSION_INTERNA = "1.23"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.23", [
+        "Registro de avance con tabla nueva (virtual): solo se dibujan las filas que se ven. La 06.03 (374 filas) abre en 0.2 s en vez de 2.5–3 s, y deslizar y escribir son instantáneos aunque la partida tenga cientos de filas.",
+        "La tabla ocupa el resto de la pantalla y se desliza por dentro; la tarjeta de la partida queda arriba y los títulos de columna quedan siempre a la vista.",
+        "Se escribe igual: tocás la casilla y escribís; Enter o ↓ bajan a la siguiente, ↑ sube. Al bajar con Enter se selecciona el número (escribir lo reemplaza).",
+        "Historial completo, niveles que se abren y cierran, Fechas con avance, Observaciones, «+ tramo», los colores y los cálculos funcionan igual.",
+        "Apariencia › «Tabla de Registro de avance»: interruptor «Usar la tabla clásica» para volver a la tabla anterior si algo de la nueva no te funciona.",
+    ]),
     ("v1.22", [
         "Registro de avance · «Historial completo»: a la izquierda queda fijo Ubicación, Contractual, Acum. ant., Acum. total, % avance y Saldo; a la derecha solo los días, en orden cronológico, y es lo único que se desliza en horizontal.",
         "Historial completo: un clic en un día lo vuelve editable en su misma columna (pasa a ser la fecha de registro y los totales se recalculan a esa fecha); las columnas no se mueven.",
@@ -2773,6 +2781,14 @@ class PaginaRegistro(Pagina):
         self.panel = ui.Desplazable(self.cuerpo, scrollbar_button_color=C["borde"], scrollbar_button_hover_color=C["texto2"], fg_color="transparent")
         self.panel.grid(row=0, column=1, sticky="nsew")
         self.panel.grid_columnconfigure(0, weight=1)
+        self.panel_s = self.panel
+        # tabla virtual: la página no se desliza entera; la tabla ocupa lo que queda y se desliza por dentro
+        self.panel_v = ctk.CTkFrame(self.cuerpo, fg_color="transparent")
+        self.panel_v.grid(row=0, column=1, sticky="nsew")
+        self.panel_v.grid_columnconfigure(0, weight=1)
+        self.panel_v.grid_rowconfigure(1, weight=1)
+        self.panel_v.grid_remove()
+        self.tv_reg = None
         b = self.barra_inferior()
         self.v_estado = tk.StringVar(value="")
         self.v_monto = tk.StringVar(value="")
@@ -2959,7 +2975,10 @@ class PaginaRegistro(Pagina):
     def _editar_fecha(self, f):
         """Historial completo: un clic en un día lo vuelve editable en su misma columna (y es la fecha de registro)."""
         try:
-            self._x_hist = self._envol_h.canvas.xview()[0] if self._envol_h is not None else None
+            if self.tv_reg is not None:
+                self._x_hist = self.tv_reg.xfrac()
+            else:
+                self._x_hist = self._envol_h.canvas.xview()[0] if self._envol_h is not None else None
         except tk.TclError:
             self._x_hist = None
         self._ir_a_fecha(f)
@@ -3012,9 +3031,23 @@ class PaginaRegistro(Pagina):
             self.filas = {}
         return True
 
+    def tabla_virtual(self):
+        return not self.app.cfg.get("tabla_clasica", False)
+
     def mostrar(self):
-        for w in self.panel.winfo_children():
-            w.destroy()
+        for pn in (self.panel_s, self.panel_v):
+            for w in pn.winfo_children():
+                w.destroy()
+        self.tv_reg = None
+        virtual = self.tabla_virtual()
+        if virtual:
+            self.panel_s.grid_remove()
+            self.panel_v.grid()
+            self.panel = self.panel_v
+        else:
+            self.panel_v.grid_remove()
+            self.panel_s.grid()
+            self.panel = self.panel_s
         self.filas = {}
         self.cabeceras = []
         if not self.p:
@@ -3095,7 +3128,38 @@ class PaginaRegistro(Pagina):
             fechas_todas = sorted({k[0] for k in datos_cmp} | {self.fecha})
         pos = fechas_todas.index(self.fecha)
         NT = len(fechas_todas)
-        if historial:
+        tabla = None
+        if virtual:
+            # columnas: en «Día» todas juntas; en «Historial completo» lo fijo a la izquierda y los días a la derecha
+            def cdef(cid, titulo, tipo="txt", alinear="e", **kw):
+                d = {"id": cid, "titulo": titulo, "tipo": tipo, "alinear": alinear}
+                d.update(kw)
+                return d
+            fijas = [cdef(0, "Ubicación", alinear="w"), cdef(1, "Contractual"), cdef(2, "Acum. ant.")]
+            totales = [cdef(4, "Acum. total"), cdef(5, "% avance"), cdef(7, "Saldo")]
+            obs_c = [cdef(8, "Observación", "obs", "w")] if ver_obs else []
+            if historial:
+                dias = []
+                for fc in fechas_todas:
+                    if fc == self.fecha:
+                        dias.append(cdef(3, "✎ " + core.fecha_txt(fc)[:5], "entrada", resaltar=True))
+                    else:
+                        dias.append(cdef(fc, core.fecha_txt(fc)[:5], "fecha",
+                                         clic=lambda f=fc: self._editar_fecha(f)))
+                izq_c, der_c = fijas + totales + obs_c, dias
+            else:
+                izq_c, der_c = [], fijas + [cdef(3, "Del día", "entrada")] + totales + obs_c
+            tabla = ctrlp_tabla.TablaVirtual(self.panel, izq_c, der_c)
+            tabla.grid(row=1, column=0, sticky="nsew")
+            self.tv_reg = tabla
+            tab = tab_d = None
+            envol = None
+            self._envol_h = None
+
+            def dest(k):
+                return None, k
+            n_der = 0
+        elif historial:
             marco_h = tk.Frame(self.panel, bg=col("fondo"))
             marco_h.grid(row=1, column=0, sticky="ew")
             marco_h.grid_columnconfigure(1, weight=1)
@@ -3130,6 +3194,8 @@ class PaginaRegistro(Pagina):
         titulos = ("Ubicación", "Contractual", "Acum. ant.",
                    ("✎ " + core.fecha_txt(self.fecha)[:5]) if historial else "Del día",
                    "Acum. total", "% avance", "", "Saldo", "Observación")
+        if virtual:
+            titulos = ()            # los títulos los dibuja la tabla virtual
         for k, (tt, a) in enumerate(zip(titulos, anchos)):
             if k == 8 and not ver_obs:
                 break
@@ -3141,7 +3207,7 @@ class PaginaRegistro(Pagina):
             tk.Label(m_, text=tt, bg=col("sel") if (historial and k == 3) else col("subtotal"),
                      fg=col("acento") if k == 3 else col("texto2"),
                      font=TF(9, "bold"), anchor="w" if k in (0, 8) else "e", padx=6, pady=8).grid(row=0, column=c_, sticky="nsew")
-        if historial:
+        if historial and not virtual:
             for fc in fechas_todas:
                 if fc == self.fecha:
                     continue
@@ -3157,7 +3223,7 @@ class PaginaRegistro(Pagina):
         cont = p.contractual_de(iid)
         ANCHO_NUM = 11          # ancho fijo de las cifras: escribir no obliga a reacomodar toda la tabla
         H = hitos or [None]
-        if historial:           # alto fijo de las filas para que la parte fija y la que se desliza queden alineadas
+        if historial and not virtual:   # alto fijo de las filas para que la parte fija y la que se desliza queden alineadas
             prueba_e = tk.Entry(tab, font=TF(10, "bold"), highlightthickness=1, relief="flat")
             ALTO_HOJA = prueba_e.winfo_reqheight() + 6 + 8
             prueba_e.destroy()
@@ -3171,6 +3237,13 @@ class PaginaRegistro(Pagina):
         def fila_resumen(texto, fondo, bold=True, indent=0):
             r = self._fila_tab
             lab = {}
+            if virtual:
+                lab[0] = ctrlp_tabla.Celda(tabla, " " * indent + texto)
+                for k in [c for c in range(1, 9 if ver_obs else 8) if c != 6]:
+                    lab[k] = ctrlp_tabla.Celda(tabla)
+                tabla.fila_resumen(r, " " * indent + texto, fondo, bold, lab)
+                self._fila_tab += 1
+                return lab
 
             def armar():
                 fnt = TF(10, "bold" if bold else "normal")
@@ -3211,6 +3284,24 @@ class PaginaRegistro(Pagina):
                     "base": base, "nivel": nv, "edificio": edificio, "entry": None, "es_hito": bool(hi)}
             self.filas[key] = fila
             bloqueada = lectura or (orig is not None and not p.puede_editar_avance(orig))
+            if virtual:
+                fila["entry"] = ctrlp_tabla.CeldaEntrada(tabla, "disabled" if bloqueada else "normal")
+                fila["obs_bloq"] = bloqueada
+                for k in (4, 5, 7):
+                    lab[k] = ctrlp_tabla.Celda(tabla)
+                por_fecha = {}
+                if historial:
+                    for fc in fechas_todas:
+                        vc = datos_cmp.get((fc,) + key) if fc != self.fecha else None
+                        if vc:
+                            por_fecha[fc] = fmt(vc)
+                tabla.fila_hoja(r, etq, bold, contractual_txt, fmt(ant), fila, lab, por_fecha,
+                                col("texto") if contractual_txt not in ("—", "") else col("texto2"))
+                v.trace_add("write", lambda *_, key=key: self._cambio_fila(key))
+                v.trace_add("write", lambda *_: tabla.marcar())
+                o.trace_add("write", lambda *_: (self._estado(), tabla.marcar()))
+                self._fila_tab += 2
+                return
 
             def armar():
                 if historial:
@@ -3268,6 +3359,10 @@ class PaginaRegistro(Pagina):
         cant_tipos = p.cant_tipos_de(iid)
 
         def boton_mas(texto, fila_tk, cmd, fondo):
+            if virtual:
+                tabla.enlace(fila_tk, texto, cmd)
+                return
+
             def armar():
                 b = tk.Label(tab, text=texto, bg=fondo, fg=col("acento"), font=TF(9, "bold"), cursor="hand2", padx=4)
                 b.grid(row=fila_tk, column=0, sticky="e", padx=4)
@@ -3403,10 +3498,27 @@ class PaginaRegistro(Pagina):
             manual = getattr(self, "_manual_niv", {}).get(iid, {})
             abiertos = {nv_ for nv_ in con_av if manual.get(nv_, True)} | {nv_ for nv_, a_ in manual.items() if a_}
             for nv_, _n, _l, _r0, _r1, _k, i0, i1 in rangos_nv:
+                if virtual:
+                    break                       # la tabla virtual no necesita armar nada aparte
                 if nv_ not in abiertos and i1 > i0:
                     self._pend_nivel[nv_] = cola[i0:i1]
                     for q in range(i0, i1):
                         cola[q] = lambda: None
+
+        if virtual:
+            tabla.listo()
+            self._plegar_niveles(tab, iid, rangos_nv, abiertos, plegar)
+            self.armando = False
+            self._tok_tabla = None
+            self.recalcular()
+            if historial:
+                xf = getattr(self, "_x_hist", None)
+                self._x_hist = None
+                if xf is not None:
+                    self.after(20, lambda: tabla.xview_moveto(xf))
+                else:
+                    self.after(20, lambda: tabla.ver_columna(3))
+            return
 
         def fin():
             self._plegar_niveles(tab, iid, rangos_nv, abiertos, plegar)
@@ -3464,6 +3576,16 @@ class PaginaRegistro(Pagina):
         self._pliegue = {}
         if not plegar:
             return
+        if self.tv_reg is not None:
+            for nv, nombre, labd, r0, r1, *_ in rangos:
+                lab0 = labd.get(0)
+                if lab0 is None:
+                    continue
+                self._pliegue[nv] = [[], lab0, nombre, r0, r1]
+                lab0.configure(cursor="hand2")
+                lab0.bind("<Button-1>", lambda _, nv=nv, iid=iid: self._alternar_nivel(iid, nv))
+                self._mostrar_nivel(nv, nv in abiertos)
+            return
         por_fila = {}
         for t_ in (tab, getattr(self, "tab_d", None)):
             if t_ is None:
@@ -3484,6 +3606,9 @@ class PaginaRegistro(Pagina):
         pl = self._pliegue[nv]
         ws, lab0, nombre, r0, r1 = pl
         lab0.configure(text=("▾ " if abierto else "▸ ") + nombre)
+        if self.tv_reg is not None:
+            self.tv_reg.ocultar(r0, r1, not abierto)
+            return
         if abierto and nv in getattr(self, "_pend_nivel", {}):
             for job in self._pend_nivel.pop(nv):            # primera vez que se abre: se arma su detalle
                 job()
@@ -5540,6 +5665,19 @@ class PaginaApariencia(Pagina):
                      "pone transparente); se usa el tamaño elegido aquí. Se aplica al reiniciar Ctrl-P.", 11,
                  color="texto2", wraplength=560, justify="left").grid(row=2, column=0, sticky="w", padx=22,
                                                                        pady=(8, 16))
+        # tabla de Registro: la nueva (rápida) o la clásica, por si hiciera falta volver mientras se ajusta
+        tt = ui.Tarjeta(self.cuerpo)
+        tt.grid(row=3, column=0, sticky="nw", pady=(16, 0))
+        etiqueta(tt, "Tabla de Registro de avance", 15, "bold").grid(row=0, column=0, sticky="w", padx=22, pady=(16, 2))
+        self.v_clasica = tk.BooleanVar(value=bool(app.cfg.get("tabla_clasica", False)))
+        fz = ctk.CTkFrame(tt, fg_color="transparent")
+        fz.grid(row=1, column=0, sticky="w", padx=22, pady=(6, 0))
+        ui.Interruptor(fz, self.v_clasica, comando=self._elegir_tabla).pack(side="left")
+        etiqueta(fz, "Usar la tabla clásica", 13).pack(side="left", padx=(10, 0))
+        etiqueta(tt, "La tabla nueva dibuja solo las filas que se ven: abre y se desliza rápido aunque la partida tenga "
+                     "cientos de filas. La clásica es la de antes (más lenta); dejala apagada salvo que algo de la nueva "
+                     "no te funcione.", 11, color="texto2", wraplength=560, justify="left").grid(
+            row=2, column=0, sticky="w", padx=22, pady=(8, 16))
         t2 = ui.Tarjeta(self.cuerpo)
         t2.grid(row=1, column=0, sticky="nw", pady=(16, 0))
         etiqueta(t2, "Actualizaciones", 15, "bold").grid(row=0, column=0, columnspan=3, sticky="w", padx=22, pady=(16, 2))
@@ -5550,6 +5688,12 @@ class PaginaApariencia(Pagina):
         etiqueta(t2, "Al abrir, Ctrl-P revisa si hay una versión nueva (si no hay internet, no molesta). Actualizar "
                      "nunca es obligatorio y no toca tus proyectos ni la carpeta CTRL-P DOC.", 11, color="texto2",
                  wraplength=560, justify="left").grid(row=2, column=0, columnspan=3, sticky="w", padx=22, pady=(8, 16))
+
+    def _elegir_tabla(self):
+        self.app.cfg = core.config_poner(tabla_clasica=bool(self.v_clasica.get()))
+        pg = self.app.paginas.get("registro")
+        if pg is not None and pg.it:
+            pg._rearmar_conservando()           # lo escrito y sin guardar se conserva
 
     ZOOMS = (0.9, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0)
 

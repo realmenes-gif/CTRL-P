@@ -1,4 +1,12 @@
-## Ctrl-P v1.22 (Windows)
+## Ctrl-P v1.23 (Windows)
+
+- Registro de avance con tabla nueva (virtual): solo se dibujan las filas que se ven. La 06.03 (374 filas) abre en 0.2 s en vez de 2.5–3 s, y deslizar y escribir son instantáneos aunque la partida tenga cientos de filas.
+- La tabla ocupa el resto de la pantalla y se desliza por dentro; la tarjeta de la partida queda arriba y los títulos de columna quedan siempre a la vista.
+- Se escribe igual: tocás la casilla y escribís; Enter o ↓ bajan a la siguiente, ↑ sube. Al bajar con Enter se selecciona el número (escribir lo reemplaza).
+- Historial completo, niveles que se abren y cierran, Fechas con avance, Observaciones, «+ tramo», los colores y los cálculos funcionan igual.
+- Apariencia › «Tabla de Registro de avance»: interruptor «Usar la tabla clásica» para volver a la tabla anterior si algo de la nueva no te funciona.
+
+### Incluye lo de la v1.22
 
 - Registro de avance · «Historial completo»: a la izquierda queda fijo Ubicación, Contractual, Acum. ant., Acum. total, % avance y Saldo; a la derecha solo los días, en orden cronológico, y es lo único que se desliza en horizontal.
 - Historial completo: un clic en un día lo vuelve editable en su misma columna (pasa a ser la fecha de registro y los totales se recalculan a esa fecha); las columnas no se mueven.
