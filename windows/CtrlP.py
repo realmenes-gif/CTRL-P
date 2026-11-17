@@ -30,12 +30,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.18"
-VERSION_INTERNA = "1.18"
+VERSION = "v1.19"
+VERSION_INTERNA = "1.19"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.19", [
+        "Registro de avance: «Ver otras fechas» (en la barra de abajo) agrega, al lado de «Del día», lo que ingresaste en las 4 fechas anteriores con avance de esa partida, fila por fila, para comparar mientras escribís. Un clic en la fecha de la columna te lleva a ese día. Se ingresa igual que siempre en «Del día».",
+    ]),
     ("v1.18", [
         "Pantallas extra (HDMI, televisor, proyector): al pasar la ventana de una pantalla a otra ya no se pone transparente ni se pega (Ctrl-P ya no reescala todo al cambiar de monitor; de ahí venía el error «invalid command name …dropdownmenu»).",
         "Apariencia › «Tamaño de letra y controles» (90 % a 200 %): agranda letras, tablas, botones y menú para verse bien en monitores grandes. Se aplica reiniciando Ctrl-P (lo hace solo, con el mismo proyecto).",
@@ -2740,12 +2743,27 @@ class PaginaRegistro(Pagina):
         sw.pack(side="right", padx=(0, 24))
         ui.Interruptor(sw, self.v_obs, comando=self._toggle_obs).pack(side="right")
         etiqueta(sw, "Observaciones", 12, color="texto2").pack(side="right", padx=(0, 8))
+        # comparar con lo ingresado en otras fechas (columnas al lado de «Del día»)
+        self.v_cmp = tk.BooleanVar(value=app.cfg.get("registro_comparar", True))
+        sw2 = ctk.CTkFrame(b, fg_color="transparent")
+        sw2.pack(side="right", padx=(0, 24))
+        ui.Interruptor(sw2, self.v_cmp, comando=self._toggle_cmp).pack(side="right")
+        etiqueta(sw2, f"Ver otras fechas ({self.N_COMPARAR})", 12, color="texto2").pack(side="right", padx=(0, 8))
         caja.pack(side="left", fill="x", expand=True)
         self.it = None
         self.filas = {}
 
+    N_COMPARAR = 4              # fechas con avance que se muestran para comparar
+
+    def _toggle_cmp(self):
+        self.app.cfg = core.config_poner(registro_comparar=bool(self.v_cmp.get()))
+        self._rearmar_conservando()
+
     def _toggle_obs(self):
         self.app.cfg = core.config_poner(ver_observaciones=bool(self.v_obs.get()))
+        self._rearmar_conservando()
+
+    def _rearmar_conservando(self):
         if self.it:
             if self.pendientes():
                 # conservar lo escrito
@@ -3017,6 +3035,27 @@ class PaginaRegistro(Pagina):
         tab = tk.Frame(envol.interior, bg=bg, highlightthickness=1, highlightbackground=col("borde"))
         tab.pack(fill="both", expand=True)
         ver_obs = bool(self.v_obs.get())
+        # comparar: lo ingresado en las últimas fechas con avance, al lado de «Del día» (solo para mirar)
+        fechas_cmp, datos_cmp = [], {}
+        if not lectura and bool(self.v_cmp.get()):
+            fechas_cmp = [r[0] for r in p.con.execute(
+                "SELECT DISTINCT fecha FROM avances WHERE item=? AND fecha<? ORDER BY fecha DESC LIMIT ?",
+                (iid, self.fecha, self.N_COMPARAR))][::-1]
+            if len(fechas_cmp) < self.N_COMPARAR:
+                fechas_cmp += [r[0] for r in p.con.execute(
+                    "SELECT DISTINCT fecha FROM avances WHERE item=? AND fecha>? ORDER BY fecha LIMIT ?",
+                    (iid, self.fecha, self.N_COMPARAR - len(fechas_cmp)))]
+            if fechas_cmp:
+                q = ",".join("?" * len(fechas_cmp))
+                for r in p.con.execute(
+                        f"SELECT fecha, nivel, equipo, tramo, hito, SUM(cantidad) s FROM avances WHERE item=? "
+                        f"AND fecha IN ({q}) GROUP BY fecha, nivel, equipo, tramo, hito", [iid] + fechas_cmp):
+                    datos_cmp[(r["fecha"], r["nivel"], r["equipo"] or "", r["tramo"] or "", r["hito"] or "")] = r["s"]
+        NC = len(fechas_cmp)
+
+        def CK(k):                  # columna real: las de comparar van justo después de «Del día»
+            return k if k <= 3 else k + NC
+        self._ck = CK
         anchos = (96, 0, 0, 0, 0, 0, 0, 0, 80)
         titulos = ("Ubicación", "Contractual", "Acum. ant.",
                    {"Semana": "De la semana", "Mes": "Del mes"}.get(self.v_vista.get(), "Del día"),
@@ -3026,9 +3065,14 @@ class PaginaRegistro(Pagina):
                 break
             if k == 6:
                 continue
-            tab.grid_columnconfigure(k, weight=1 if k == (8 if ver_obs else 0) else 0, minsize=a)
+            tab.grid_columnconfigure(CK(k), weight=1 if k == (8 if ver_obs else 0) else 0, minsize=a)
             tk.Label(tab, text=tt, bg=col("subtotal"), fg=col("acento") if k == 3 else col("texto2"),
-                     font=TF(9, "bold"), anchor="w" if k in (0, 8) else "e", padx=6, pady=8).grid(row=0, column=k, sticky="nsew")
+                     font=TF(9, "bold"), anchor="w" if k in (0, 8) else "e", padx=6, pady=8).grid(row=0, column=CK(k), sticky="nsew")
+        for j, fc in enumerate(fechas_cmp):
+            lt = tk.Label(tab, text=core.fecha_txt(fc)[:5] + " ↗", bg=col("subtotal"), fg=col("texto2"),
+                          font=TF(9, "bold"), anchor="e", padx=6, pady=8, cursor="hand2")
+            lt.grid(row=0, column=4 + j, sticky="nsew")
+            lt.bind("<Button-1>", lambda _, f=fc: self._ir_a_fecha(f))
         self._fila_tab = 1
         self.labels_grupo = {}
         self.label_general = {}
@@ -3053,7 +3097,9 @@ class PaginaRegistro(Pagina):
                 for k in [c for c in range(1, 9 if ver_obs else 8) if c != 6]:
                     lab[k] = tk.Label(tab, text="", bg=fondo, fg=col("texto"), font=TF(10, "bold" if bold else "normal"),
                                       anchor="e", padx=6, width=ANCHO_NUM if k != 8 else 0)
-                    lab[k].grid(row=r, column=k, sticky="nsew")
+                    lab[k].grid(row=r, column=CK(k), sticky="nsew")
+                for j in range(NC):
+                    tk.Label(tab, text="", bg=fondo, width=ANCHO_NUM - 2).grid(row=r, column=4 + j, sticky="nsew")
             cola.append(armar)
             self._fila_tab += 1
             return lab
@@ -3093,20 +3139,24 @@ class PaginaRegistro(Pagina):
                 for k in (4, 5, 7):
                     lab[k] = tk.Label(tab, text="", bg=bg, fg=col("texto"), font=TF(10), anchor="e", padx=6,
                                       width=ANCHO_NUM)
-                    lab[k].grid(row=r, column=k, sticky="nsew")
+                    lab[k].grid(row=r, column=CK(k), sticky="nsew")
+                for j, fc in enumerate(fechas_cmp):
+                    vc = datos_cmp.get((fc,) + key)
+                    tk.Label(tab, text=fmt(vc) if vc else "", bg=bg, fg=col("texto2"), font=TF(10), anchor="e",
+                             padx=6, width=ANCHO_NUM - 2).grid(row=r, column=4 + j, sticky="nsew")
                 eo = None
                 if ver_obs and not lectura:          # la casilla de observación solo se crea si se ve
                     eo = tk.Entry(tab, textvariable=o, font=TF(10), relief="flat", bg=bg, fg=col("texto"), width=6,
                                   disabledbackground=col("suave"), disabledforeground=col("texto2"),
                                   insertbackground=col("texto"), highlightthickness=1,
                                   highlightbackground=col("borde"), highlightcolor=col("acento"))
-                    eo.grid(row=r, column=8, sticky="ew", padx=6, pady=4, ipady=3)
+                    eo.grid(row=r, column=CK(8), sticky="ew", padx=6, pady=4, ipady=3)
                 if bloqueada:
                     e.configure(state="disabled")
                     if eo is not None:
                         eo.configure(state="disabled")
                 fila["entry"] = e
-                tk.Frame(tab, height=1, bg=col("linea")).grid(row=r + 1, column=0, columnspan=9, sticky="ew")
+                tk.Frame(tab, height=1, bg=col("linea")).grid(row=r + 1, column=0, columnspan=9 + NC, sticky="ew")
                 if fila.get("pintar"):
                     self._pintar_fila(fila)
             cola.append(armar)

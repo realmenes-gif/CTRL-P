@@ -1,4 +1,8 @@
-## Ctrl-P v1.18 (Windows)
+## Ctrl-P v1.19 (Windows)
+
+- Registro de avance: «Ver otras fechas» (en la barra de abajo) agrega, al lado de «Del día», lo que ingresaste en las 4 fechas anteriores con avance de esa partida, fila por fila, para comparar mientras escribís. Un clic en la fecha de la columna te lleva a ese día. Se ingresa igual que siempre en «Del día».
+
+### Incluye lo de la v1.18
 
 - Pantallas extra (HDMI, televisor, proyector): al pasar la ventana de una pantalla a otra ya no se pone transparente ni se pega (Ctrl-P ya no reescala todo al cambiar de monitor; de ahí venía el error «invalid command name …dropdownmenu»).
 - Apariencia › «Tamaño de letra y controles» (90 % a 200 %): agranda letras, tablas, botones y menú para verse bien en monitores grandes. Se aplica reiniciando Ctrl-P (lo hace solo, con el mismo proyecto).
