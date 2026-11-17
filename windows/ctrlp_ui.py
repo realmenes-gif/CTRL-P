@@ -1036,8 +1036,13 @@ class ScrollH(tk.Frame):
     """Contenedor con desplazamiento horizontal solo cuando el contenido no entra; si sobra espacio, lo estira.
     Poner el contenido en .interior."""
 
-    def __init__(self, master, bg):
+    def __init__(self, master, bg, reservar=False):
         super().__init__(master, bg=bg, highlightthickness=0, bd=0)
+        # reservar: el lugar de la barra queda siempre (para alinear con una tabla fija al lado)
+        self.alto_barra = int(12 * ctk.ScalingTracker.get_widget_scaling(master)) + 4
+        self._hueco = tk.Frame(self, height=self.alto_barra, bg=bg) if reservar else None
+        if self._hueco is not None:
+            self._hueco.pack(side="top", fill="x")
         self.canvas = tk.Canvas(self, bg=bg, highlightthickness=0, bd=0, height=1)
         self.canvas.pack(side="bottom", fill="x", expand=True)
         self.sb = ctk.CTkScrollbar(self, orientation="horizontal", command=self.canvas.xview, height=12,
@@ -1062,11 +1067,15 @@ class ScrollH(tk.Frame):
         self.canvas.configure(scrollregion=(0, 0, max(cw, req_w), req_h))
         hace_falta = req_w > cw + 1
         if hace_falta and not self._sb_visible:
+            if self._hueco is not None:
+                self._hueco.pack_forget()
             self.sb.pack(side="top", fill="x", pady=(0, 4))     # arriba de la tabla, siempre a la vista
             self._sb_visible = True
         elif not hace_falta and self._sb_visible:
             self.sb.pack_forget()
             self._sb_visible = False
+            if self._hueco is not None:
+                self._hueco.pack(side="top", fill="x", before=self.canvas)
             self.canvas.xview_moveto(0)
 
 

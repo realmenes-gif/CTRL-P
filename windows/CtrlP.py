@@ -30,12 +30,19 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.21"
-VERSION_INTERNA = "1.21"
+VERSION = "v1.22"
+VERSION_INTERNA = "1.22"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.22", [
+        "Registro de avance · «Historial completo»: a la izquierda queda fijo Ubicación, Contractual, Acum. ant., Acum. total, % avance y Saldo; a la derecha solo los días, en orden cronológico, y es lo único que se desliza en horizontal.",
+        "Historial completo: un clic en un día lo vuelve editable en su misma columna (pasa a ser la fecha de registro y los totales se recalculan a esa fecha); las columnas no se mueven.",
+        "Historial completo: la lista de partidas se oculta para dar lugar a los días; «☰ Partidas» la muestra u oculta. Al volver a «Día» vuelve sola.",
+        "Observaciones: el interruptor empieza apagado cada vez que se abre Ctrl-P.",
+        "Niveles cerrados: se abren los que tienen avance en la fecha que se ve (antes se iban sumando los de otras fechas); lo que abrís o cerrás a mano se recuerda.",
+    ]),
     ("v1.21", [
         "Memorias de cálculo unas 3 veces más rápidas (64 memorias: de 9 a 3 segundos). El Excel sale igual.",
         "Exportar informe a Excel e Informes «Detallado por ubicación» más rápidos (edificios y niveles se leen una sola vez por cálculo).",
@@ -1826,6 +1833,9 @@ def ancho_arbol(cuerpo):
     """La columna del arbol de partidas toma ~1/3 del ancho: angosta en ventanas chicas, mas descripcion en grandes."""
     def f(_=None):
         w = cuerpo.winfo_width()
+        if getattr(cuerpo, "_sin_arbol", False):
+            cuerpo.grid_columnconfigure(0, minsize=0)
+            return
         if w > 1:
             esc = ctk.ScalingTracker.get_widget_scaling(cuerpo)
             cuerpo.grid_columnconfigure(0, minsize=int(max(300 * esc, min(520 * esc, w * 0.36))))
@@ -2752,6 +2762,8 @@ class PaginaRegistro(Pagina):
         boton(caja, "Hoy", ancho=56, command=self.hoy).grid(row=1, column=4, padx=(6, 0))
         self.b_fechas = boton(caja, "Fechas con avance ▾", ancho=170, command=self._menu_fechas)
         self.b_fechas.grid(row=1, column=5, padx=(8, 0))
+        # en «Historial completo» la lista de partidas se oculta para dar lugar a los días; este botón la muestra
+        self.b_partidas = boton(caja, "☰ Partidas", ancho=110, command=self._alternar_arbol)
         self.fecha = core.hoy_iso()
         self.cuerpo.grid_columnconfigure(1, weight=1)
         self.cuerpo.grid_rowconfigure(0, weight=1)
@@ -2775,7 +2787,7 @@ class PaginaRegistro(Pagina):
         self.b_guardar = boton(b, "Guardar", primario=True, ancho=130, command=self.guardar)
         self.b_guardar.pack(side="right")
         boton(b, "Descartar", ancho=110, command=self.descartar).pack(side="right", padx=8)
-        self.v_obs = tk.BooleanVar(value=app.cfg.get("ver_observaciones", True))
+        self.v_obs = tk.BooleanVar(value=False)        # Observaciones: apagado al abrir
         sw = ctk.CTkFrame(b, fg_color="transparent")
         sw.pack(side="right", padx=(0, 24))
         ui.Interruptor(sw, self.v_obs, comando=self._toggle_obs).pack(side="right")
@@ -2892,7 +2904,25 @@ class PaginaRegistro(Pagina):
             self.v_tit_fecha.set("Fecha de registro")
 
     def _cambiar_vista(self):
+        hist = self.v_vista.get() == "Historial completo"
+        self._mostrar_arbol(not hist)
+        if hist:
+            self.b_partidas.grid(row=1, column=6, padx=(8, 0))
+        else:
+            self.b_partidas.grid_remove()
         self._rearmar_conservando()             # lo escrito y sin guardar se conserva
+
+    def _mostrar_arbol(self, si):
+        self.cuerpo._sin_arbol = not si
+        if si:
+            self.arbol.grid()
+        else:
+            self.arbol.grid_remove()
+            self.cuerpo.grid_columnconfigure(0, minsize=0)
+        self.cuerpo.event_generate("<Configure>")
+
+    def _alternar_arbol(self):
+        self._mostrar_arbol(not self.arbol.winfo_ismapped())
 
     # ---- fechas con avance de la partida
     def _menu_fechas(self):
@@ -2925,6 +2955,14 @@ class PaginaRegistro(Pagina):
             m.tk_popup(b.winfo_rootx(), b.winfo_rooty() + b.winfo_height())
         finally:
             m.grab_release()
+
+    def _editar_fecha(self, f):
+        """Historial completo: un clic en un día lo vuelve editable en su misma columna (y es la fecha de registro)."""
+        try:
+            self._x_hist = self._envol_h.canvas.xview()[0] if self._envol_h is not None else None
+        except tk.TclError:
+            self._x_hist = None
+        self._ir_a_fecha(f)
 
     def _ir_a_fecha(self, f):
         self.v_fecha.set(core.fecha_txt(f))
@@ -3043,56 +3081,88 @@ class PaginaRegistro(Pagina):
             ui.ajustar_texto(ld, cab, 16, 200)
         # tabla editable (widgets tk para que sea rapido); con desplazamiento horizontal si la ventana es angosta
         bg = col("tarjeta")
-        envol = ui.ScrollH(self.panel, col("fondo"))
-        envol.grid(row=1, column=0, sticky="ew")
-        tab = tk.Frame(envol.interior, bg=bg, highlightthickness=1, highlightbackground=col("borde"))
-        tab.pack(fill="both", expand=True)
         ver_obs = bool(self.v_obs.get())
-        # historial completo: una columna por cada día con avance, en orden; la de la fecha de registro se escribe
+        historial = self.v_vista.get() == "Historial completo"
+        # historial completo: a la izquierda lo fijo (ubicación y totales); a la derecha, que se desliza, una
+        # columna por cada día con avance en orden cronológico; la de la fecha de registro se escribe
         datos_cmp = {}
         fechas_todas = [self.fecha]
-        if self.v_vista.get() == "Historial completo":
+        if historial:
             for r in p.con.execute(
                     "SELECT fecha, nivel, equipo, tramo, hito, SUM(cantidad) s FROM avances WHERE item=? AND fecha<>? "
                     "GROUP BY fecha, nivel, equipo, tramo, hito HAVING ABS(SUM(cantidad))>1e-9", (iid, self.fecha)):
                 datos_cmp[(r["fecha"], r["nivel"], r["equipo"] or "", r["tramo"] or "", r["hito"] or "")] = r["s"]
             fechas_todas = sorted({k[0] for k in datos_cmp} | {self.fecha})
-        # «Del día» (se escribe) y los totales quedan a la vista; los demás días van a la derecha, del más
-        # reciente al más viejo, y se ven deslizando la tabla
-        hist = sorted((f for f in fechas_todas if f != self.fecha), reverse=True)
-        NH = len(hist)
-        NT = NH + 1
-        col_fecha = {f: 8 + k for k, f in enumerate(hist)}
+        pos = fechas_todas.index(self.fecha)
+        NT = len(fechas_todas)
+        if historial:
+            marco_h = tk.Frame(self.panel, bg=col("fondo"))
+            marco_h.grid(row=1, column=0, sticky="ew")
+            marco_h.grid_columnconfigure(1, weight=1)
+            envol = ui.ScrollH(marco_h, col("fondo"), reservar=True)
+            tab = tk.Frame(marco_h, bg=bg, highlightthickness=1, highlightbackground=col("borde"))
+            tab.grid(row=0, column=0, sticky="nw", pady=(envol.alto_barra, 0))
+            envol.grid(row=0, column=1, sticky="new")
+            tab_d = tk.Frame(envol.interior, bg=bg, highlightthickness=1, highlightbackground=col("borde"))
+            tab_d.pack(fill="both", expand=True)
+            self._envol_h = envol
+            # columnas fijas en el orden: Ubicación, Contractual, Acum. ant., Acum. total, % avance, Saldo, Obs.
+            FIJA = {0: 0, 1: 1, 2: 2, 4: 3, 5: 4, 7: 5, 8: 6}
 
-        def CK(k):
-            return k if k < 8 else k + NH
-        self._ck = CK
+            def dest(k):
+                return (tab_d, pos) if k == 3 else (tab, FIJA[k])
+            n_der = NT
+        else:
+            envol = ui.ScrollH(self.panel, col("fondo"))
+            envol.grid(row=1, column=0, sticky="ew")
+            tab = tk.Frame(envol.interior, bg=bg, highlightthickness=1, highlightbackground=col("borde"))
+            tab.pack(fill="both", expand=True)
+            tab_d = None
+            self._envol_h = None
+
+            def dest(k):
+                return tab, k
+            n_der = 0
+        self.tab, self.tab_d = tab, tab_d
+        self._min_filas = {}
+        col_fecha = {f: k for k, f in enumerate(fechas_todas)}
         anchos = (96, 0, 0, 0, 0, 0, 0, 0, 80)
         titulos = ("Ubicación", "Contractual", "Acum. ant.",
-                   "Del día",
+                   ("✎ " + core.fecha_txt(self.fecha)[:5]) if historial else "Del día",
                    "Acum. total", "% avance", "", "Saldo", "Observación")
         for k, (tt, a) in enumerate(zip(titulos, anchos)):
             if k == 8 and not ver_obs:
                 break
             if k == 6:
                 continue
-            tab.grid_columnconfigure(CK(k), weight=1 if k == (8 if ver_obs else 0) else 0, minsize=a)
-            tk.Label(tab, text=tt, bg=col("subtotal"), fg=col("acento") if k == 3 else col("texto2"),
-                     font=TF(9, "bold"), anchor="w" if k in (0, 8) else "e", padx=6, pady=8).grid(row=0, column=CK(k), sticky="nsew")
-        for fc in hist:
-            tab.grid_columnconfigure(col_fecha[fc], minsize=int(84 * ui.ZOOM))
-            lt = tk.Label(tab, text=core.fecha_txt(fc)[:5], bg=col("subtotal"), fg=col("texto2"),
-                          font=TF(9, "bold"), anchor="e", padx=6, pady=8, cursor="hand2")
-            lt.grid(row=0, column=col_fecha[fc], sticky="nsew")
-            lt.bind("<Button-1>", lambda _, f=fc: self._ir_a_fecha(f))
+            m_, c_ = dest(k)
+            m_.grid_columnconfigure(c_, weight=1 if (k == (8 if ver_obs else 0) and not historial) else 0,
+                                    minsize=a if not (historial and k == 3) else int(84 * ui.ZOOM))
+            tk.Label(m_, text=tt, bg=col("sel") if (historial and k == 3) else col("subtotal"),
+                     fg=col("acento") if k == 3 else col("texto2"),
+                     font=TF(9, "bold"), anchor="w" if k in (0, 8) else "e", padx=6, pady=8).grid(row=0, column=c_, sticky="nsew")
+        if historial:
+            for fc in fechas_todas:
+                if fc == self.fecha:
+                    continue
+                tab_d.grid_columnconfigure(col_fecha[fc], minsize=int(84 * ui.ZOOM))
+                lt = tk.Label(tab_d, text=core.fecha_txt(fc)[:5], bg=col("subtotal"), fg=col("texto2"),
+                              font=TF(9, "bold"), anchor="e", padx=6, pady=8, cursor="hand2")
+                lt.grid(row=0, column=col_fecha[fc], sticky="nsew")
+                lt.bind("<Button-1>", lambda _, f=fc: self._editar_fecha(f))
         self._fila_tab = 1
         self.labels_grupo = {}
         self.label_general = {}
-        self.tab = tab
         hoy = {} if lectura else p.avances_del_dia(iid, self.fecha)
         cont = p.contractual_de(iid)
         ANCHO_NUM = 11          # ancho fijo de las cifras: escribir no obliga a reacomodar toda la tabla
         H = hitos or [None]
+        if historial:           # alto fijo de las filas para que la parte fija y la que se desliza queden alineadas
+            prueba_e = tk.Entry(tab, font=TF(10, "bold"), highlightthickness=1, relief="flat")
+            ALTO_HOJA = prueba_e.winfo_reqheight() + 6 + 8
+            prueba_e.destroy()
+        else:
+            ALTO_HOJA = 0
 
         # la tabla se arma por tandas (primero lo que se ve): la ventana responde enseguida aunque haya cientos de filas
         cola = []
@@ -3103,15 +3173,22 @@ class PaginaRegistro(Pagina):
             lab = {}
 
             def armar():
+                fnt = TF(10, "bold" if bold else "normal")
                 lab[0] = tk.Label(tab, text=" " * indent + texto, bg=fondo, fg=col("texto"),
-                                  font=TF(10, "bold" if bold else "normal"), anchor="w", padx=6, pady=6)
+                                  font=fnt, anchor="w", padx=6, pady=6)
                 lab[0].grid(row=r, column=0, sticky="nsew")
                 for k in [c for c in range(1, 9 if ver_obs else 8) if c != 6]:
-                    lab[k] = tk.Label(tab, text="", bg=fondo, fg=col("texto"), font=TF(10, "bold" if bold else "normal"),
-                                      anchor="e", padx=6, width=ANCHO_NUM if k != 8 else 0)
-                    lab[k].grid(row=r, column=CK(k), sticky="nsew")
-                if NH:
-                    tk.Label(tab, text="", bg=fondo).grid(row=r, column=8, columnspan=NH, sticky="nsew")
+                    m_, c_ = dest(k)
+                    lab[k] = tk.Label(m_, text="", bg=fondo, fg=col("texto"), font=fnt, anchor="e", padx=6,
+                                      pady=6 if m_ is tab_d else 0, width=ANCHO_NUM if k != 8 else 0)
+                    lab[k].grid(row=r, column=c_, sticky="nsew")
+                if historial:           # el resto de los días de esta fila: un solo relleno a cada lado
+                    if pos:
+                        tk.Label(tab_d, text="", bg=fondo, font=fnt, pady=6).grid(row=r, column=0, columnspan=pos,
+                                                                                 sticky="nsew")
+                    if NT - 1 - pos:
+                        tk.Label(tab_d, text="", bg=fondo, font=fnt, pady=6).grid(
+                            row=r, column=pos + 1, columnspan=NT - 1 - pos, sticky="nsew")
             cola.append(armar)
             self._fila_tab += 1
             return lab
@@ -3136,6 +3213,10 @@ class PaginaRegistro(Pagina):
             bloqueada = lectura or (orig is not None and not p.puede_editar_avance(orig))
 
             def armar():
+                if historial:
+                    self._min_filas[r] = ALTO_HOJA
+                    tab.grid_rowconfigure(r, minsize=ALTO_HOJA)
+                    tab_d.grid_rowconfigure(r, minsize=ALTO_HOJA)
                 tk.Label(tab, text=etq, bg=bg, fg=col("texto"), font=TF(10, "bold" if bold else "normal"),
                          anchor="w", padx=6).grid(row=r, column=0, sticky="nsew")
                 tk.Label(tab, text=contractual_txt, bg=bg,
@@ -3143,33 +3224,39 @@ class PaginaRegistro(Pagina):
                          font=TF(10), anchor="e", padx=6, width=ANCHO_NUM).grid(row=r, column=1, sticky="nsew")
                 tk.Label(tab, text=fmt(ant), bg=bg, fg=col("texto"), font=TF(10), anchor="e", padx=6,
                          width=ANCHO_NUM).grid(row=r, column=2, sticky="nsew")
-                e = tk.Entry(tab, textvariable=v, justify="right", font=TF(10, "bold"), relief="flat",
+                m_, c_ = dest(3)
+                e = tk.Entry(m_, textvariable=v, justify="right", font=TF(10, "bold"), relief="flat",
                              bg=col("campo"), fg=col("texto"), insertbackground=col("texto"), highlightthickness=1,
                              highlightbackground=col("campo_borde"), highlightcolor=col("acento"), width=9,
                              disabledbackground=col("suave"), disabledforeground=col("texto2"))
-                e.grid(row=r, column=CK(3), sticky="ew", padx=6, pady=4, ipady=3)
+                e.grid(row=r, column=c_, sticky="ew", padx=6, pady=4, ipady=3)
                 for k in (4, 5, 7):
-                    lab[k] = tk.Label(tab, text="", bg=bg, fg=col("texto"), font=TF(10), anchor="e", padx=6,
+                    m_, c_ = dest(k)
+                    lab[k] = tk.Label(m_, text="", bg=bg, fg=col("texto"), font=TF(10), anchor="e", padx=6,
                                       width=ANCHO_NUM)
-                    lab[k].grid(row=r, column=CK(k), sticky="nsew")
-                for fc in hist:
-                    vc = datos_cmp.get((fc,) + key)
-                    if vc:                      # solo los días con algo: la tabla sigue liviana
-                        tk.Label(tab, text=fmt(vc), bg=bg, fg=col("texto2"), font=TF(10), anchor="e",
-                                 padx=6, width=ANCHO_NUM - 2).grid(row=r, column=col_fecha[fc], sticky="nsew")
+                    lab[k].grid(row=r, column=c_, sticky="nsew")
+                if historial:
+                    for fc in fechas_todas:
+                        vc = datos_cmp.get((fc,) + key) if fc != self.fecha else None
+                        if vc:                      # solo los días con algo: la tabla sigue liviana
+                            tk.Label(tab_d, text=fmt(vc), bg=bg, fg=col("texto2"), font=TF(10), anchor="e",
+                                     padx=6, width=ANCHO_NUM - 2).grid(row=r, column=col_fecha[fc], sticky="nsew")
                 eo = None
                 if ver_obs and not lectura:          # la casilla de observación solo se crea si se ve
-                    eo = tk.Entry(tab, textvariable=o, font=TF(10), relief="flat", bg=bg, fg=col("texto"), width=6,
+                    m_, c_ = dest(8)
+                    eo = tk.Entry(m_, textvariable=o, font=TF(10), relief="flat", bg=bg, fg=col("texto"), width=6 if not historial else 14,
                                   disabledbackground=col("suave"), disabledforeground=col("texto2"),
                                   insertbackground=col("texto"), highlightthickness=1,
                                   highlightbackground=col("borde"), highlightcolor=col("acento"))
-                    eo.grid(row=r, column=CK(8), sticky="ew", padx=6, pady=4, ipady=3)
+                    eo.grid(row=r, column=c_, sticky="ew", padx=6, pady=4, ipady=3)
                 if bloqueada:
                     e.configure(state="disabled")
                     if eo is not None:
                         eo.configure(state="disabled")
                 fila["entry"] = e
-                tk.Frame(tab, height=1, bg=col("linea")).grid(row=r + 1, column=0, columnspan=9 + NT - 1, sticky="ew")
+                tk.Frame(tab, height=1, bg=col("linea")).grid(row=r + 1, column=0, columnspan=9, sticky="ew")
+                if historial:
+                    tk.Frame(tab_d, height=1, bg=col("linea")).grid(row=r + 1, column=0, columnspan=NT, sticky="ew")
                 if fila.get("pintar"):
                     self._pintar_fila(fila)
             cola.append(armar)
@@ -3312,11 +3399,9 @@ class PaginaRegistro(Pagina):
         self._pend_nivel = {}
         abiertos = set()
         if plegar:
-            abiertos = getattr(self, "_abiertos", {}).get(iid)
-            if abiertos is None:
-                abiertos = set()
-                self._abiertos = {iid: abiertos}
-            abiertos |= set(con_av)
+            # abiertos: los que tienen avance en la fecha, más/menos los que se abrieron o cerraron a mano
+            manual = getattr(self, "_manual_niv", {}).get(iid, {})
+            abiertos = {nv_ for nv_ in con_av if manual.get(nv_, True)} | {nv_ for nv_, a_ in manual.items() if a_}
             for nv_, _n, _l, _r0, _r1, _k, i0, i1 in rangos_nv:
                 if nv_ not in abiertos and i1 > i0:
                     self._pend_nivel[nv_] = cola[i0:i1]
@@ -3326,6 +3411,12 @@ class PaginaRegistro(Pagina):
         def fin():
             self._plegar_niveles(tab, iid, rangos_nv, abiertos, plegar)
             self.recalcular()
+            if historial:
+                xf = getattr(self, "_x_hist", None)     # al tocar otro día, el historial queda donde estaba
+                self._x_hist = None
+                if xf is None:                          # si no, se ve el día que se escribe
+                    xf = 1.0 if pos == NT - 1 else max(0.0, pos / NT - 0.05)
+                self.after(40, lambda: self._envol_h is not None and self._envol_h.canvas.xview_moveto(xf))
 
         self._armar_por_tandas(cola, fin)
 
@@ -3374,8 +3465,11 @@ class PaginaRegistro(Pagina):
         if not plegar:
             return
         por_fila = {}
-        for w in tab.grid_slaves():
-            por_fila.setdefault(int(w.grid_info()["row"]), []).append(w)
+        for t_ in (tab, getattr(self, "tab_d", None)):
+            if t_ is None:
+                continue
+            for w in t_.grid_slaves():
+                por_fila.setdefault(int(w.grid_info()["row"]), []).append(w)
         for nv, nombre, labd, r0, r1, *_ in rangos:
             lab0 = labd.get(0)
             if lab0 is None:
@@ -3393,21 +3487,28 @@ class PaginaRegistro(Pagina):
         if abierto and nv in getattr(self, "_pend_nivel", {}):
             for job in self._pend_nivel.pop(nv):            # primera vez que se abre: se arma su detalle
                 job()
-            pl[0] = ws = [w for w in self.tab.grid_slaves() if r0 <= int(w.grid_info()["row"]) < r1]
+            pl[0] = ws = [w for t_ in (self.tab, getattr(self, "tab_d", None)) if t_ is not None
+                          for w in t_.grid_slaves() if r0 <= int(w.grid_info()["row"]) < r1]
             self.recalcular()
         for w in ws:
             if abierto:
                 w.grid()
             else:
                 w.grid_remove()
+        mins = getattr(self, "_min_filas", {})
+        if mins:                                # filas de alto fijo (historial): cerradas no ocupan lugar
+            for r in range(r0, r1):
+                if r in mins:
+                    for t_ in (self.tab, self.tab_d):
+                        if t_ is not None:
+                            t_.grid_rowconfigure(r, minsize=mins[r] if abierto else 0)
 
     def _alternar_nivel(self, iid, nv):
-        abiertos = self._abiertos.setdefault(iid, set())
-        abierto = nv not in abiertos
-        if abierto:
-            abiertos.add(nv)
-        else:
-            abiertos.discard(nv)
+        ws, lab0, *_ = self._pliegue[nv]
+        abierto = not lab0.cget("text").startswith("▾")
+        if not hasattr(self, "_manual_niv"):
+            self._manual_niv = {}
+        self._manual_niv.setdefault(iid, {})[nv] = abierto
         self._mostrar_nivel(nv, abierto)
 
     def _guardar_antes(self, titulo):

@@ -1,4 +1,12 @@
-## Ctrl-P v1.21 (Windows)
+## Ctrl-P v1.22 (Windows)
+
+- Registro de avance · «Historial completo»: a la izquierda queda fijo Ubicación, Contractual, Acum. ant., Acum. total, % avance y Saldo; a la derecha solo los días, en orden cronológico, y es lo único que se desliza en horizontal.
+- Historial completo: un clic en un día lo vuelve editable en su misma columna (pasa a ser la fecha de registro y los totales se recalculan a esa fecha); las columnas no se mueven.
+- Historial completo: la lista de partidas se oculta para dar lugar a los días; «☰ Partidas» la muestra u oculta. Al volver a «Día» vuelve sola.
+- Observaciones: el interruptor empieza apagado cada vez que se abre Ctrl-P.
+- Niveles cerrados: se abren los que tienen avance en la fecha que se ve (antes se iban sumando los de otras fechas); lo que abrís o cerrás a mano se recuerda.
+
+### Incluye lo de la v1.21
 
 - Memorias de cálculo unas 3 veces más rápidas (64 memorias: de 9 a 3 segundos). El Excel sale igual.
 - Exportar informe a Excel e Informes «Detallado por ubicación» más rápidos (edificios y niveles se leen una sola vez por cálculo).
