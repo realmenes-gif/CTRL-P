@@ -2335,10 +2335,14 @@ class Calculo:
         fija = self.p.ubic_fija_de(iid)
         hojas = self.hojas(iid)
         grupos = []
-        for e in self.p.edificios():
+        est = getattr(self, "_estructura", None)
+        if est is None:                 # edificios y niveles se leen una vez por cálculo (antes, en cada partida)
+            est = self._estructura = []
+            for e in self.p.edificios():
+                nvs_e = self.p.niveles_de(e["id"])
+                est.append((e, nvs_e, self.p.area_simple(e, nvs_e)))
+        for e, nvs_e, simple in est:
             filas = []
-            nvs_e = self.p.niveles_de(e["id"])
-            simple = self.p.area_simple(e, nvs_e)
             for n in nvs_e:
                 nv = n["id"]
                 if fija and nv != fija:

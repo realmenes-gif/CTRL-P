@@ -1,4 +1,13 @@
-## Ctrl-P v1.20 (Windows)
+## Ctrl-P v1.21 (Windows)
+
+- Memorias de cálculo unas 3 veces más rápidas (64 memorias: de 9 a 3 segundos). El Excel sale igual.
+- Exportar informe a Excel e Informes «Detallado por ubicación» más rápidos (edificios y niveles se leen una sola vez por cálculo).
+- Datos fijos: abrir una partida grande pasa de 2–2.5 a menos de 1 segundo. Las casillas de cantidad son más livianas (cuadradas, con el mismo «Sin asignar»).
+- Ubicaciones: entrar y Refrescar más rápido (las etiquetas de niveles se dibujan de forma liviana).
+- Barras de desplazamiento: se dibujan una sola vez cuando la ventana queda libre (antes obligaban a reacomodar todo varias veces al armar cada página).
+- Registro de avance: en partidas con mucho detalle (más de 40 filas para escribir), los niveles sin avance en la fecha quedan cerrados en una línea con sus totales y se abren con un clic en el nombre; su detalle se arma recién al abrirlos. Los niveles con avance ese día quedan abiertos.
+
+### Incluye lo de la v1.20
 
 - Registro de avance: «Semana» y «Mes» se reemplazan por «Historial completo». Muestra lo de cada día con avance de la partida, fila por fila, a la derecha de los totales (del más reciente al más viejo) y se desliza en horizontal. Solo se escribe en «Del día», que es la fecha de registro; un clic en la fecha de una columna te lleva a ese día.
 - Se quitó el interruptor «Ver otras fechas (4)»: lo reemplaza «Historial completo».

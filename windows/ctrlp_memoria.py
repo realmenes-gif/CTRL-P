@@ -18,6 +18,9 @@ import os
 import re
 import sys
 
+import ctrlp_xlrapido  # noqa: F401  (formatos de Excel más rápidos)
+from openpyxl.worksheet.cell_range import CellRange
+from openpyxl.worksheet.merge import MergedCellRange
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
 from openpyxl.drawing.xdr import XDRPositiveSize2D
@@ -51,6 +54,25 @@ BLANCO = "FFFFFF"
 NUM = "#,##0.00"
 CONT = '_(* #,##0.00_);_(* \\(#,##0.00\\);_(* "-"??_);_(@_)'
 LETRA = "Aptos Narrow"
+
+def _memo(cls):
+    """Mismo formato pedido otra vez = el mismo objeto (openpyxl ya no tiene que compararlo de nuevo)."""
+    from openpyxl.descriptors.serialisable import Serialisable
+    cache = {}
+
+    def clave(v):
+        return ("id", id(v)) if isinstance(v, Serialisable) else v
+
+    def crear(*a, **k):
+        key = (tuple(clave(v) for v in a), tuple(sorted((n, clave(v)) for n, v in k.items())))
+        hit = cache.get(key)
+        if hit is None:
+            hit = cache[key] = (cls(*a, **k), a, k)      # se guardan los argumentos: sus id no se reutilizan
+        return hit[0]
+    return crear
+
+
+Font, PatternFill, Border, Alignment = _memo(Font), _memo(PatternFill), _memo(Border), _memo(Alignment)
 
 FINA = Side(style="thin", color="000000")
 MEDIA = Side(style="medium", color="000000")
@@ -323,7 +345,8 @@ def _unir(ws, f0, c0, f1, c1, valor=None, **est):
         for c in range(c0, c1 + 1):
             _celda(ws, f, c, **{k: v for k, v in est.items() if k != "al"})
     if (f0, c0) != (f1, c1):
-        ws.merge_cells(start_row=f0, start_column=c0, end_row=f1, end_column=c1)
+        # combinar sin que openpyxl rehaga celda por celda los bordes (ya se pusieron arriba): mucho más rápido
+        ws.merged_cells.add(MergedCellRange(ws, CellRange(min_col=c0, min_row=f0, max_col=c1, max_row=f1).coord))
     return _celda(ws, f0, c0, valor, al=est.get("al"))
 
 

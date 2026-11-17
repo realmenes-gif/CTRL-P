@@ -30,12 +30,20 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.20"
-VERSION_INTERNA = "1.20"
+VERSION = "v1.21"
+VERSION_INTERNA = "1.21"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.21", [
+        "Memorias de cálculo unas 3 veces más rápidas (64 memorias: de 9 a 3 segundos). El Excel sale igual.",
+        "Exportar informe a Excel e Informes «Detallado por ubicación» más rápidos (edificios y niveles se leen una sola vez por cálculo).",
+        "Datos fijos: abrir una partida grande pasa de 2–2.5 a menos de 1 segundo. Las casillas de cantidad son más livianas (cuadradas, con el mismo «Sin asignar»).",
+        "Ubicaciones: entrar y Refrescar más rápido (las etiquetas de niveles se dibujan de forma liviana).",
+        "Barras de desplazamiento: se dibujan una sola vez cuando la ventana queda libre (antes obligaban a reacomodar todo varias veces al armar cada página).",
+        "Registro de avance: en partidas con mucho detalle (más de 40 filas para escribir), los niveles sin avance en la fecha quedan cerrados en una línea con sus totales y se abren con un clic en el nombre; su detalle se arma recién al abrirlos. Los niveles con avance ese día quedan abiertos.",
+    ]),
     ("v1.20", [
         "Registro de avance: «Semana» y «Mes» se reemplazan por «Historial completo». Muestra lo de cada día con avance de la partida, fila por fila, a la derecha de los totales (del más reciente al más viejo) y se desliza en horizontal. Solo se escribe en «Del día», que es la fecha de registro; un clic en la fecha de una columna te lleva a ese día.",
         "Se quitó el interruptor «Ver otras fechas (4)»: lo reemplaza «Historial completo».",
@@ -1748,6 +1756,10 @@ class PaginaUbicaciones(Pagina):
         self.app.guardar()
         self.refrescar()
 
+    def al_cambiar_tema(self):
+        if self.p:
+            self.refrescar()                    # las píldoras de niveles toman los colores del tema
+
     def refrescar(self):
         if not self.niveles and not self.editando:
             self._regenerar()
@@ -1774,7 +1786,7 @@ class PaginaUbicaciones(Pagina):
             t = ui.Tarjeta(self.lista)
             t.grid(row=r, column=0, sticky="ew", pady=5)
             r += 1
-            cab = ctk.CTkFrame(t, fg_color="transparent")
+            cab = tk.Frame(t, bg=col("tarjeta"))
             cab.grid(row=0, column=0, columnspan=2, sticky="ew", padx=18, pady=(14, 6))
             nom = etiqueta(cab, e["nombre"], 17, "bold", justify="left")
             if not self.p.solo_agregar:
@@ -1784,31 +1796,27 @@ class PaginaUbicaciones(Pagina):
             ui.ajustar_texto(nom, cab, lambda c=cab, n=nom: sum(w.winfo_reqwidth() + 8 for w in c.pack_slaves() if w is not n), 100)
             niv = self.p.niveles_de(e["id"])
             if e["es_area"] and self.p.area_simple(e, niv):
-                fila_a = ctk.CTkFrame(t, fg_color="transparent")
+                fila_a = tk.Frame(t, bg=col("tarjeta"))
                 fila_a.grid(row=1, column=0, columnspan=2, sticky="ew", padx=18, pady=(0, 14))
-                etiqueta(fila_a, "Una sola ubicación", 12, color="texto2").pack(side="left")
+                ui.lbl(fila_a, "Una sola ubicación", 12, color="texto2").pack(side="left")
                 if not self.p.solo_agregar:
                     boton(fila_a, "+ tramo", ancho=90, alto=28, command=lambda e=e: self.nuevo_tramo(e)).pack(side="right")
             elif e["es_area"]:
-                fila_a = ctk.CTkFrame(t, fg_color="transparent")
+                fila_a = tk.Frame(t, bg=col("tarjeta"))
                 fila_a.grid(row=1, column=0, columnspan=2, sticky="ew", padx=18, pady=(0, 6))
                 ntr = sum(1 for n in niv if n["nombre"] != core.NIVEL_UNICO)
-                etiqueta(fila_a, f"{ntr} tramo" + ("" if ntr == 1 else "s"), 12, color="texto2").pack(side="left")
+                ui.lbl(fila_a, f"{ntr} tramo" + ("" if ntr == 1 else "s"), 12, color="texto2").pack(side="left")
                 if not self.p.solo_agregar:
                     boton(fila_a, "+ tramo", ancho=90, alto=28, command=lambda e=e: self.nuevo_tramo(e)).pack(side="right")
                 chips = ctk.CTkFrame(t, fg_color="transparent", height=1)
                 chips.grid(row=2, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 14))
-                ui.flujo(chips, [ctk.CTkLabel(chips, text=f"   {core.nombre_nivel(e, n)}   ", font=F(11, "bold"),
-                                              fg_color=C["suave"], corner_radius=12, text_color=C["texto"], height=26,
-                                              width=60) for n in niv], sep=6)
+                ui.flujo(chips, [ui.chip(chips, core.nombre_nivel(e, n)) for n in niv], sep=6)
             else:
-                etiqueta(t, f"{len(niv)} niveles", 12, color="texto2").grid(row=1, column=0, columnspan=2, sticky="w",
-                                                                           padx=18, pady=(0, 6))
+                ui.lbl(t, f"{len(niv)} niveles", 12, color="texto2").grid(row=1, column=0, columnspan=2, sticky="w",
+                                                                         padx=18, pady=(0, 6))
                 chips = ctk.CTkFrame(t, fg_color="transparent", height=1)
                 chips.grid(row=2, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 14))
-                ui.flujo(chips, [ctk.CTkLabel(chips, text=f"   {n['nombre']}   ", font=F(11, "bold"), fg_color=C["suave"],
-                                              corner_radius=12, text_color=C["texto"], height=26, width=60)
-                                 for n in niv], sep=6)
+                ui.flujo(chips, [ui.chip(chips, n["nombre"]) for n in niv], sep=6)
 
 
 # =========================================================================
@@ -1981,6 +1989,8 @@ class PaginaDatosFijos(Pagina):
 
     def al_cambiar_tema(self):
         ui.etiquetas_tabla(self.arbol.tv)
+        if self.it:
+            self._redibujar()                   # las filas livianas toman los colores del tema (se conserva lo escrito)
 
     def al_cambiar_proyecto(self):
         self.it = None
@@ -2339,7 +2349,7 @@ class PaginaDatosFijos(Pagina):
                                        for x in l] for nv, l in orig.items()}
             datos = self.tramos_ed
         cont = self.p.contractual_de(it["id"])
-        lista = ctk.CTkFrame(t, fg_color="transparent")
+        lista = tk.Frame(t, bg=col("tarjeta"))
         lista.grid(row=1, column=0, columnspan=2, sticky="ew", padx=18, pady=(4, 14))
         fila = 0
         palabra = "equipos" if es_eq else "tramos"
@@ -2351,10 +2361,10 @@ class PaginaDatosFijos(Pagina):
             filas = datos.get(nv, [])
             if vis is not None and nv not in vis and not filas:
                 continue
-            f = ctk.CTkFrame(lista, fg_color="transparent")
+            f = tk.Frame(lista, bg=col("tarjeta"))
             f.grid(row=fila, column=0, sticky="w", pady=(6, 2))
             fila += 1
-            etiqueta(f, u["etiqueta"], 13, "bold").pack(side="left")
+            ui.lbl(f, u["etiqueta"], 13, True).pack(side="left")
             suma = sum(x for x in (ui.leer_num(fl[2].get()) for fl in filas) if isinstance(x, float))
             info = f"{len(filas)} {palabra}" if filas else f"sin {palabra}"
             if suma:
@@ -2363,18 +2373,16 @@ class PaginaDatosFijos(Pagina):
                     info += f" de {fmt(cont[nv])} contractual"
                     if es_eq and abs(suma - cont[nv]) > 0.005:
                         info += "  ●"
-            etiqueta(f, f"   {info}", 11, color="texto2").pack(side="left")
-            b = ctk.CTkButton(f, text="+ Equipo" if es_eq else "+ Tramo", width=84, height=26, corner_radius=8, font=F(12),
-                              fg_color=C["suave"], hover_color=C["suave_h"], text_color=C["texto"],
-                              command=lambda nv=nv: self._agregar_fila(tipo, nv))
-            b.pack(side="left", padx=12)
-            if bloqueado:
-                b.configure(state="disabled")
+            ui.lbl(f, f"   {info}", 11, color="texto2").pack(side="left")
+            if not bloqueado:                # enlace liviano (como «+ tramo» en Registro)
+                b = ui.lbl(f, "+ Equipo" if es_eq else "+ Tramo", 12, True, "acento", cursor="hand2", padx=6, pady=3)
+                b.pack(side="left", padx=12)
+                b.bind("<Button-1>", lambda _, nv=nv: self._agregar_fila(tipo, nv))
             ops_eq = ["(sin equipo)"] + [fl[1].get().strip().upper() for fl in self.equipos_ed.get(nv, [])
                                           if fl[1].get().strip()] if con_eq and not es_eq else None
             for k, fl in enumerate(filas):
                 xid, vn, vc = fl[0], fl[1], fl[2]
-                ff = ctk.CTkFrame(lista, fg_color="transparent")
+                ff = tk.Frame(lista, bg=col("tarjeta"))
                 ff.grid(row=fila, column=0, sticky="w", padx=(18, 0), pady=1)
                 fila += 1
                 en = ui.entrada_mayus(ff, vn, 220, placeholder_text="Nombre")
@@ -2392,7 +2400,7 @@ class PaginaDatosFijos(Pagina):
                 if not es_eq and xid:
                     tr = self.p.tramo(xid)
                     extra = " · dibujado en plano" if tr and tr["geom"] else ""
-                etiqueta(ff, it["unidad"] + extra, 11, color="texto2").pack(side="left")
+                ui.lbl(ff, it["unidad"] + extra, 11, color="texto2").pack(side="left")
                 bx = ctk.CTkButton(ff, text="×", width=28, height=28, corner_radius=8, font=F(14), fg_color=C["suave"],
                                    hover_color=C["suave_h"], text_color=C["texto"],
                                    command=lambda nv=nv, k=k: self._quitar_fila(tipo, nv, k))
@@ -2610,14 +2618,15 @@ class PaginaDatosFijos(Pagina):
                 orig = cont.get(n["id"])
                 v = tk.StringVar(value=ui.txt_num(orig))
                 self.vars[n["id"]] = (v, orig)
-                fila = ctk.CTkFrame(tt, fg_color="transparent")
+                fila = tk.Frame(tt, bg=col("tarjeta"))            # filas livianas (tk): abren mucho más rápido
                 fila.grid(row=j, column=0, columnspan=2, sticky="ew", padx=16,
                           pady=(2, 14) if j == len(niv) else (2, 8 if tipos else 2))
                 fila.grid_columnconfigure(0, weight=1)
-                ln = etiqueta(fila, "Área sin nivel" if self.p.area_simple(e, niv_todos) else core.nombre_nivel(e, n), 13, "bold" if tipos else "normal")
+                ln = ui.lbl(fila, "Área sin nivel" if self.p.area_simple(e, niv_todos) else core.nombre_nivel(e, n),
+                            13, bool(tipos))
                 ln.grid(row=0, column=0, sticky="w")
-                en = entrada(fila, v, 130, placeholder_text="Sin asignar", justify="right")
-                en.grid(row=0, column=1, sticky="e")
+                en = ui.entrada_ligera(fila, v, 130, "Sin asignar")
+                en.grid(row=0, column=1, sticky="e", ipady=4)
                 if bloqueado or (not editar and orig is not None):
                     en.configure(state="disabled")
                 if tipos:
@@ -2627,11 +2636,11 @@ class PaginaDatosFijos(Pagina):
                         vt = tk.StringVar(value=ui.txt_num(o_t))
                         self.vars_tipo[(n["id"], hid0)] = (vt, o_t, tp)
                         vt_nv.append(vt)
-                        lt = etiqueta(fila, tp, 12, color="texto2", justify="left")
+                        lt = ui.lbl(fila, tp, 12, color="texto2", justify="left", anchor="w")
                         lt.grid(row=q, column=0, sticky="w", padx=(18, 8), pady=1)
                         ui.ajustar_texto(lt, fila, 130 + 18 + 16, 80)
-                        et = entrada(fila, vt, 110, placeholder_text="Sin asignar", justify="right")
-                        et.grid(row=q, column=1, sticky="e", pady=1)
+                        et = ui.entrada_ligera(fila, vt, 110, "Sin asignar")
+                        et.grid(row=q, column=1, sticky="e", pady=1, ipady=3)
                         if bloqueado or (not editar and o_t is not None):
                             et.configure(state="disabled")
 
@@ -3262,6 +3271,7 @@ class PaginaRegistro(Pagina):
                     boton_mas("+ tramo", fila_nv, lambda nv=nv: self.agregar_tramo(nv), col("titulo"))
                 keys_nv = []
                 r0_nv = self._fila_tab
+                i0_nv = len(cola)                   # trabajos del detalle de este nivel (se pueden armar después)
                 if not con_equipos:
                     keys_nv = bloque(nv, None, c_nv, g["edificio"], 3)
                 else:
@@ -3286,7 +3296,7 @@ class PaginaRegistro(Pagina):
                         self.cabeceras.append({"lab": labe, "keys": ks, "base": base_eq})
                         keys_nv += ks
                 self.cabeceras.append({"lab": labn, "keys": keys_nv, "base": c_nv})
-                rangos_nv.append((nv, nombre, labn, r0_nv, self._fila_tab, len(keys_nv)))
+                rangos_nv.append((nv, nombre, labn, r0_nv, self._fila_tab, len(keys_nv), i0_nv, len(cola)))
             if not g["es_area"] and len(filas_g) > 1:
                 self.labels_grupo[g["edificio"]] = fila_resumen(f"Total {g['nombre']}", col("subtotal"))
         self.label_general = fila_resumen("General", col("titulo0"))
@@ -3296,16 +3306,28 @@ class PaginaRegistro(Pagina):
         ui.ajustar_texto(ln, cab, 0, 200)        # cab se borra con la partida: no se acumulan escuchadores
         con_av = {k[0] for k in (per_h if lectura else hoy)}
 
+        # partidas con mucho detalle: los niveles sin avance del día quedan cerrados y su detalle se arma recién
+        # al abrirlos (clic en el nombre del nivel); los niveles con avance quedan abiertos
+        plegar = sum(r_[5] for r_ in rangos_nv) > self.UMBRAL_PLEGAR
+        self._pend_nivel = {}
+        abiertos = set()
+        if plegar:
+            abiertos = getattr(self, "_abiertos", {}).get(iid)
+            if abiertos is None:
+                abiertos = set()
+                self._abiertos = {iid: abiertos}
+            abiertos |= set(con_av)
+            for nv_, _n, _l, _r0, _r1, _k, i0, i1 in rangos_nv:
+                if nv_ not in abiertos and i1 > i0:
+                    self._pend_nivel[nv_] = cola[i0:i1]
+                    for q in range(i0, i1):
+                        cola[q] = lambda: None
+
         def fin():
-            self._plegar_niveles(tab, iid, rangos_nv, con_av)
+            self._plegar_niveles(tab, iid, rangos_nv, abiertos, plegar)
             self.recalcular()
 
         self._armar_por_tandas(cola, fin)
-
-    # Windows no dibuja una ventana de más de 32 767 px de alto: con muchos niveles y detalle (tipos, hitos,
-    # tramos…) la tabla se pasaba de eso y se veía en blanco. Entonces el detalle de cada nivel se pliega y se
-    # abre con un clic en el nombre del nivel; los niveles con avance en la fecha quedan abiertos.
-    ALTO_MAX_TABLA = 22000      # px estimados de detalle a partir de los cuales se pliega
 
     TANDA_PRIMERA = 90          # filas que se arman de una (lo que se ve al abrir)
     TANDA = 70                  # y luego de a tantas, dejando respirar a la ventana
@@ -3344,31 +3366,35 @@ class PaginaRegistro(Pagina):
         self._ver_todas = si
         self.mostrar()
 
-    def _plegar_niveles(self, tab, iid, rangos, con_avance):
+    UMBRAL_PLEGAR = 40          # filas para escribir a partir de las cuales los niveles sin avance se cierran
+
+    def _plegar_niveles(self, tab, iid, rangos, abiertos, plegar):
+        """Cada nivel se abre o cierra con un clic en su nombre. Cerrado: una sola línea con sus totales."""
         self._pliegue = {}
-        n_hojas = sum(r[5] for r in rangos)
-        n_resumen = sum(r[4] - r[3] for r in rangos) - 2 * n_hojas
-        if n_hojas * 38 + n_resumen * 31 <= self.ALTO_MAX_TABLA:
+        if not plegar:
             return
         por_fila = {}
         for w in tab.grid_slaves():
             por_fila.setdefault(int(w.grid_info()["row"]), []).append(w)
-        abiertos = getattr(self, "_abiertos", {}).get(iid)
-        if abiertos is None:
-            abiertos = set()
-            self._abiertos = {iid: abiertos}
-        abiertos |= set(con_avance)
-        for nv, nombre, labd, r0, r1, _ in rangos:
-            lab0 = labd[0]
+        for nv, nombre, labd, r0, r1, *_ in rangos:
+            lab0 = labd.get(0)
+            if lab0 is None:
+                continue
             ws = [w for r in range(r0, r1) for w in por_fila.get(r, [])]
-            self._pliegue[nv] = (ws, lab0, nombre)
+            self._pliegue[nv] = [ws, lab0, nombre, r0, r1]
             lab0.configure(cursor="hand2")
             lab0.bind("<Button-1>", lambda _, nv=nv, iid=iid: self._alternar_nivel(iid, nv))
             self._mostrar_nivel(nv, nv in abiertos)
 
     def _mostrar_nivel(self, nv, abierto):
-        ws, lab0, nombre = self._pliegue[nv]
+        pl = self._pliegue[nv]
+        ws, lab0, nombre, r0, r1 = pl
         lab0.configure(text=("▾ " if abierto else "▸ ") + nombre)
+        if abierto and nv in getattr(self, "_pend_nivel", {}):
+            for job in self._pend_nivel.pop(nv):            # primera vez que se abre: se arma su detalle
+                job()
+            pl[0] = ws = [w for w in self.tab.grid_slaves() if r0 <= int(w.grid_info()["row"]) < r1]
+            self.recalcular()
         for w in ws:
             if abierto:
                 w.grid()

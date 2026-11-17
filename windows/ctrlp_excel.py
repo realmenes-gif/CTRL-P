@@ -11,6 +11,7 @@ Ctrl-P - exportaciones a Excel
 from copy import copy
 
 import openpyxl
+import ctrlp_xlrapido  # noqa: F401  (formatos de Excel más rápidos)
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 

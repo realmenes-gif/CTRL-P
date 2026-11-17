@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.4.1"
+VERSION_INTERNA = "1.4.2"
 
 CAMBIOS = [
+    ("1.4.2", [
+        "Informes por ubicación más rápidos (edificios y niveles se leen una sola vez por cálculo).",
+    ]),
     ("1.4.1", [
         "Ceros: en Registro de avance y Datos fijos, un 0 escrito se borra solo al salir de la casilla y no cuenta como avance; los 0 ya guardados se ven como casilla vacía.",
     ]),

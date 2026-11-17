@@ -40,6 +40,46 @@ def _blindar_entry():
 _blindar_entry()
 
 
+def _barra_liviana():
+    """La barra de desplazamiento redondeada se redibujaba entera cada vez que cambiaba la tabla (y además obligaba
+    a reacomodar toda la ventana en ese momento). Ahora se dibuja una sola vez, cuando la ventana queda libre."""
+    SB = ctk.CTkScrollbar
+
+    def dibujar(self):
+        self._job_sb = None
+        try:
+            if not self.winfo_exists():
+                return
+            cv = self._canvas
+            cv.update_idletasks = lambda: None      # sin reacomodar toda la ventana a mitad de camino
+            try:
+                SB._draw(self)
+            finally:
+                try:
+                    del cv.update_idletasks
+                except AttributeError:
+                    pass
+        except tk.TclError:
+            pass
+
+    def set_(self, start_value, end_value):
+        a, b = float(start_value), float(end_value)
+        if (a, b) == (getattr(self, "_start_value", None), getattr(self, "_end_value", None)) and \
+                getattr(self, "_dibujada", False):
+            return
+        self._start_value, self._end_value = a, b
+        self._dibujada = True
+        if getattr(self, "_job_sb", None) is None:
+            try:
+                self._job_sb = self.after_idle(lambda: dibujar(self))
+            except tk.TclError:
+                pass
+    SB.set = set_
+
+
+_barra_liviana()
+
+
 # ---------------------------------------------------------------- escala fija y tamaño elegido
 ZOOM = 1.0
 ESCALA_FIJA = None
@@ -229,6 +269,92 @@ def _alto_fila(raiz):
         return max(28, int(tkf.Font(root=raiz, font=TF(10)).metrics("linespace") * 1.65))
     except Exception:
         return 28
+
+
+def lbl(master, texto="", tam=13, negrita=False, color="texto", fondo="tarjeta", **kw):
+    """Etiqueta liviana (tk) con el mismo aspecto que etiqueta(): para filas que se repiten muchas veces."""
+    kw.setdefault("padx", 0)
+    kw.setdefault("pady", 0)
+    return tk.Label(master, text=texto, bg=col(fondo), fg=col(color), font=TF(max(7, round(tam * 0.75)),
+                    "bold" if negrita else "normal"), bd=0, **kw)
+
+
+def entrada_ligera(master, var, ancho=130, placeholder="", justify="right"):
+    """Casilla de texto liviana (tk) con texto de ayuda gris cuando está vacía. Se crea mucho más rápido que la
+    casilla redondeada: para pantallas con decenas de casillas (Datos fijos). Ponerla con ipady=4."""
+    esc = ctk.ScalingTracker.get_widget_scaling(master)
+    import tkinter.font as tkf
+    fuente = TF(10)
+    ancho_car = max(4, int(ancho * esc / max(1, tkf.Font(root=master, font=fuente).measure("0"))))
+    e = tk.Entry(master, textvariable=var, justify=justify, font=fuente, relief="flat", bg=col("campo"),
+                 fg=col("texto"), insertbackground=col("texto"), highlightthickness=1,
+                 highlightbackground=col("campo_borde"), highlightcolor=col("acento"), width=ancho_car,
+                 disabledbackground=col("suave"), disabledforeground=col("texto2"))
+    if not placeholder:
+        return e
+    ph = tk.Label(e, text=placeholder, bg=col("campo"), fg=col("texto2"), font=TF(9), bd=0, padx=0, pady=0,
+                  cursor="xterm")
+
+    def actualizar(*_):
+        try:
+            vacio = not var.get() and e.focus_get() is not e
+            if vacio:
+                ph.configure(bg=col("suave") if str(e.cget("state")) == "disabled" else col("campo"))
+                if justify == "right":
+                    ph.place(relx=1.0, rely=0.5, anchor="e", x=-6)
+                else:
+                    ph.place(relx=0.0, rely=0.5, anchor="w", x=6)
+            else:
+                ph.place_forget()
+        except (tk.TclError, KeyError):
+            pass
+    nombre = var.trace_add("write", actualizar)
+    e.bind("<FocusIn>", actualizar, add="+")
+    e.bind("<FocusOut>", actualizar, add="+")
+    ph.bind("<Button-1>", lambda _: e.focus_set())
+
+    def soltar(ev):
+        if ev.widget is e:
+            try:
+                var.trace_remove("write", nombre)
+            except tk.TclError:
+                pass
+    e.bind("<Destroy>", soltar, add="+")
+    e.after_idle(actualizar)
+    orig_conf = e.configure
+
+    def configure(*a, **k):
+        r = orig_conf(*a, **k)
+        if "state" in k:
+            actualizar()
+        return r
+    e.configure = e.config = configure
+    return e
+
+
+_PILDORAS = {}
+
+
+def chip(master, texto, tam=11, fondo="suave", color="texto", alto=26, radio=12, relleno=12):
+    """Píldora redondeada liviana (una imagen + texto en un tk.Label): igual que un CTkLabel redondeado pero se
+    crea y se dibuja muchísimo más rápido cuando hay cientos."""
+    import tkinter.font as tkf
+    esc = ctk.ScalingTracker.get_widget_scaling(master)
+    fuente = TF(max(7, round(tam * 0.75)), "bold")
+    ancho_txt = tkf.Font(root=master, font=fuente).measure(texto)
+    w, h = int(ancho_txt + 2 * relleno * esc), int(alto * esc)
+    clave = (w, h, col(fondo), col("tarjeta"), int(radio * esc))
+    img = _PILDORAS.get(clave)
+    if img is None:
+        k = 3
+        im = Image.new("RGBA", (w * k, h * k), (0, 0, 0, 0))
+        r_ = min(int(radio * esc) * k, h * k // 2)
+        ImageDraw.Draw(im).rounded_rectangle([0, 0, w * k - 1, h * k - 1], radius=r_, fill=_hex(col(fondo)) + (255,))
+        img = _PILDORAS[clave] = foto_tk(im.resize((w, h), Image.LANCZOS))
+    lb = tk.Label(master, image=img, text=texto, compound="center", font=fuente, fg=col(color), bg=col("tarjeta"),
+                  bd=0, padx=0, pady=0, highlightthickness=0)
+    lb._img = img
+    return lb
 
 
 def TF(tam=10, peso="normal"):

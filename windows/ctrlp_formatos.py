@@ -19,6 +19,8 @@ from openpyxl.worksheet.properties import PageSetupProperties
 import ctrlp_memoria as M
 from ctrlp_core import dia_anterior, iso_a_fecha
 
+Alignment, Border = M.Alignment, M.Border          # formatos repetidos = mismo objeto (Excel más rápido)
+
 DDEBF7 = "DDEBF7"      # totales de la tabla de hitos (como el ejemplo)
 FFF2CC = "FFF2CC"      # unidades base del hito 1
 PCT = "0.00%"
