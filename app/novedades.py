@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.4.5"
+VERSION_INTERNA = "1.4.6"
 
 CAMBIOS = [
+    ("1.4.6", [
+        "Tablas (Informes, Presupuesto y otras): ahora se deslizan de lado con el dedo para ver las columnas de la derecha. Antes el gesto horizontal no hacía nada.",
+    ]),
     ("1.4.5", [
         "Informes: «Monto período» y «% aporte» van junto a «Período», a la vista sin deslizar la tabla (antes quedaban al final, fuera de la pantalla).",
     ]),

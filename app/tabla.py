@@ -119,6 +119,7 @@ class Tabla(BoxLayout):
         lado.add_widget(interior)
         super().add_widget(lado)
         self._interior = interior
+        self._lado = lado
         cab = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40), padding=[dp(6), 0, dp(6), 0])
         self.add_widget = self._interior.add_widget
         with cab.canvas.before:
@@ -134,7 +135,9 @@ class Tabla(BoxLayout):
             c.bind(size=lambda w, *_: setattr(w, "text_size", (w.width - dp(8), w.height)))
             cab.add_widget(c)
         self.add_widget(cab)
-        self.rv = _RV(bar_width=dp(8), scroll_type=["bars", "content"], effect_cls="ScrollEffect")
+        # la lista solo se desliza hacia abajo: el gesto de lado lo toma la tabla de afuera (antes la lista se
+        # quedaba con él y la tabla no se deslizaba hacia la derecha)
+        self.rv = _RV(bar_width=dp(8), scroll_type=["bars", "content"], effect_cls="ScrollEffect", do_scroll_x=False)
         self.rv.bar_color = rgba("texto2", 0.6)
         self.rv.bar_inactive_color = rgba("texto2", 0.3)
         self.rv.tabla = self
@@ -151,6 +154,28 @@ class Tabla(BoxLayout):
         del self.add_widget
         self.todas = []
         self.sel_id = None
+
+    # ---------------------------------------------------------------- deslizar de lado
+    # La lista de filas (RecycleView) se queda con el gesto y Kivy no se lo pasa a la tabla de afuera, así que
+    # el arrastre horizontal se lleva aquí: si el dedo va más de lado que hacia abajo, la tabla se desliza de lado.
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            touch.ud["tabla_ini"] = (self._lado.scroll_x, touch.x, touch.y, self)
+            self._arrastre_lado = False
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        ini = touch.ud.get("tabla_ini")
+        if ini and ini[3] is self and touch.grab_current is None:
+            dx, dy = touch.x - ini[1], touch.y - ini[2]
+            if touch.ud.get("tabla_lado") or (abs(dx) > dp(12) and abs(dx) > abs(dy) * 1.2):
+                touch.ud["tabla_lado"] = True
+                self._arrastre_lado = True          # al soltar no cuenta como toque en una fila
+                extra = self._interior.width - self._lado.width
+                if extra > 1:
+                    self._lado.scroll_x = min(1.0, max(0.0, ini[0] - dx / extra))
+                return True
+        return super().on_touch_move(touch)
 
     # ---------------------------------------------------------------- datos
     def cargar(self, filas, conservar_abiertos=True):
@@ -188,7 +213,7 @@ class Tabla(BoxLayout):
         self._mostrar()
 
     def _tocar(self, i):
-        if i >= len(self.visibles):
+        if getattr(self, "_arrastre_lado", False) or i >= len(self.visibles):
             return
         f = self.visibles[i]
         if f.get("abierto") is not None and self.arbol:
