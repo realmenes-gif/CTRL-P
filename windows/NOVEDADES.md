@@ -1,4 +1,13 @@
-## Ctrl-P v1.17 (Windows)
+## Ctrl-P v1.18 (Windows)
+
+- Pantallas extra (HDMI, televisor, proyector): al pasar la ventana de una pantalla a otra ya no se pone transparente ni se pega (Ctrl-P ya no reescala todo al cambiar de monitor; de ahí venía el error «invalid command name …dropdownmenu»).
+- Apariencia › «Tamaño de letra y controles» (90 % a 200 %): agranda letras, tablas, botones y menú para verse bien en monitores grandes. Se aplica reiniciando Ctrl-P (lo hace solo, con el mismo proyecto).
+- Registro de avance: «Ver» Día · Semana · Mes. En Semana y Mes se ve lo ejecutado en todo el período (columna «De la semana» / «Del mes») y solo se puede mirar; para escribir o corregir se vuelve a «Día». Las flechas ‹ › avanzan de a un día, una semana o un mes.
+- Registro de avance: botón «Fechas con avance ▾» con la lista de los días en que la partida tiene avance (cantidad y ubicaciones); un clic lleva a esa fecha.
+- Registro de avance más rápido: la tabla se arma mucho más rápido y por tandas (lo que se ve aparece enseguida), al escribir solo se recalcula esa fila y «Guardar» actualiza los totales sin volver a armar la tabla.
+- Todo el programa más liviano: los avisos de tamaño de la ventana ya no se reparten a cada control (eran miles de llamadas al armar tablas grandes).
+
+### Incluye lo de la v1.17
 
 - En línea: «Abrir» desde la lista siempre trae la última versión de Google. Si la copia de esta computadora es más vieja se baja la nueva; si además tiene cambios sin subir, pregunta cuál abrir y la otra queda guardada como copia (no se pierde nada).
 - En línea (administrador): botón «Reemplazar la de Google…» para que el archivo abierto pase a ser la versión en línea (por ejemplo si lo editaste sin internet o abriste una copia local). La anterior queda guardada en Google.

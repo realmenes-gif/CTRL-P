@@ -30,12 +30,20 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.17"
-VERSION_INTERNA = "1.17"
+VERSION = "v1.18"
+VERSION_INTERNA = "1.18"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.18", [
+        "Pantallas extra (HDMI, televisor, proyector): al pasar la ventana de una pantalla a otra ya no se pone transparente ni se pega (Ctrl-P ya no reescala todo al cambiar de monitor; de ahí venía el error «invalid command name …dropdownmenu»).",
+        "Apariencia › «Tamaño de letra y controles» (90 % a 200 %): agranda letras, tablas, botones y menú para verse bien en monitores grandes. Se aplica reiniciando Ctrl-P (lo hace solo, con el mismo proyecto).",
+        "Registro de avance: «Ver» Día · Semana · Mes. En Semana y Mes se ve lo ejecutado en todo el período (columna «De la semana» / «Del mes») y solo se puede mirar; para escribir o corregir se vuelve a «Día». Las flechas ‹ › avanzan de a un día, una semana o un mes.",
+        "Registro de avance: botón «Fechas con avance ▾» con la lista de los días en que la partida tiene avance (cantidad y ubicaciones); un clic lleva a esa fecha.",
+        "Registro de avance más rápido: la tabla se arma mucho más rápido y por tandas (lo que se ve aparece enseguida), al escribir solo se recalcula esa fila y «Guardar» actualiza los totales sin volver a armar la tabla.",
+        "Todo el programa más liviano: los avisos de tamaño de la ventana ya no se reparten a cada control (eran miles de llamadas al armar tablas grandes).",
+    ]),
     ("v1.17", [
         "En línea: «Abrir» desde la lista siempre trae la última versión de Google. Si la copia de esta computadora es más vieja se baja la nueva; si además tiene cambios sin subir, pregunta cuál abrir y la otra queda guardada como copia (no se pierde nada).",
         "En línea (administrador): botón «Reemplazar la de Google…» para que el archivo abierto pase a ser la versión en línea (por ejemplo si lo editaste sin internet o abriste una copia local). La anterior queda guardada en Google.",
@@ -170,6 +178,7 @@ class App(ctk.CTk):
         ctk.set_appearance_mode({"Claro": "light", "Oscuro": "dark"}.get(modo, "system"))
         ctk.set_default_color_theme("blue")
         super().__init__(fg_color=C["fondo"])
+        ui.fijar_escala(self, self.cfg.get("zoom", 1.0))      # escala fija + tamaño elegido en Apariencia
         ui.registrar_fuentes()
         self.title(f"Ctrl-P {VERSION}")
         # tamanos en unidades logicas (CustomTkinter multiplica por la escala de Windows)
@@ -243,16 +252,16 @@ class App(ctk.CTk):
     def construir(self):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
-        self.lateral = tk.Canvas(self, width=252, highlightthickness=0, bd=0, cursor="hand2")
+        self.lateral = tk.Canvas(self, width=int(252 * ui.ZOOM), highlightthickness=0, bd=0, cursor="hand2")
         self.lateral.grid(row=0, column=0, sticky="ns")
-        self.iconos = {k: ui.foto_tk(ui.icono(k, c, 28)) for k, _, c, _ in ICONOS_LAT}
+        self.iconos = {k: ui.foto_tk(ui.icono(k, c, int(28 * ui.ZOOM))) for k, _, c, _ in ICONOS_LAT}
         self.lateral.bind("<Configure>", lambda _: self.dibujar_lateral())
         self.lateral.bind("<Button-1>", self.clic_lateral)
         self.lateral.bind("<Motion>", self._ayuda_lateral)
         self.lateral.bind("<Leave>", lambda _: self._ayuda_lat.place_forget())
         self._ayuda_lat = tk.Label(self, bg=col("texto"), fg=col("tarjeta"), font=(ui.FAM, 10), padx=8, pady=3)
         self.lat_compacto = False
-        self.bind("<Configure>", self._revisar_ancho, add="+")
+        ui.configure_solo_ventana(self, (self._revisar_ancho,))
         for k in ("<Control-s>", "<Control-S>"):
             self.bind_all(k, self.guardar_todo, add="+")
         self.bind_all("<F5>", self.refrescar_actual, add="+")
@@ -273,9 +282,16 @@ class App(ctk.CTk):
             self.after(3000, lambda: self.buscar_actualizacion(False))  # si no hay internet, no molesta
 
     def dibujar_lateral(self):
+        """Se dibuja en medidas de 100 % y al final se agranda todo con el tamaño elegido en Apariencia."""
+        self._dibujar_lateral()
+        if abs(ui.ZOOM - 1) > 1e-3:
+            self.lateral.scale("all", 0, 0, ui.ZOOM, ui.ZOOM)
+
+    def _dibujar_lateral(self):
         cv = self.lateral
         cv.delete("all")
-        h = max(cv.winfo_height(), 700)
+        Z = ui.ZOOM
+        h = max(cv.winfo_height() / Z, 700)
         comp = getattr(self, "lat_compacto", False)
         w = 76 if comp else 252
         a, b = ui._hex(col("lat_ini")), ui._hex(col("lat_fin"))
@@ -284,7 +300,7 @@ class App(ctk.CTk):
         for y in range(256):
             t = y / 255
             grad.putpixel((0, y), tuple(int(a[i] * (1 - t) + b[i] * t) for i in range(3)))
-        self._fondo_lat = ui.foto_tk(grad.resize((w, h)))
+        self._fondo_lat = ui.foto_tk(grad.resize((int(w * Z) + 1, int(h * Z) + 1)))
         cv.create_image(0, 0, image=self._fondo_lat, anchor="nw")
         cv.create_line(w - 1, 0, w - 1, h, fill=col("borde"))
         if comp:
@@ -308,7 +324,7 @@ class App(ctk.CTk):
         elif self.p:
             cv.create_rectangle(16, y, w - 16, y + 62, fill=col("tarjeta"), outline=col("borde"), tags=("archivo",))
             cv.create_text(28, y + 13, text="Proyecto", anchor="w", fill=col("texto2"), font=(ui.FAM, 8))
-            cv.create_text(28, y + 31, text=ui.recortar(self.p.nombre, (ui.FAM, 10, "bold"), w - 60), anchor="w",
+            cv.create_text(28, y + 31, text=ui.recortar(self.p.nombre, (ui.FAM, 10, "bold"), (w - 60) * Z), anchor="w",
                            fill=col("texto"), font=(ui.FAM, 10, "bold"))
             cv.create_text(28, y + 49, text=f"Presupuesto V{self.p.version_presupuesto} · {fmt(self.p.total_presupuesto())}",
                            anchor="w", fill=col("texto2"), font=(ui.FAM, 8))
@@ -351,7 +367,7 @@ class App(ctk.CTk):
             cv.create_rectangle(14, h - 60, w - 14, h - 12, fill="", outline="", tags=("usuario",))
             if core.es_admin(self.usuario):
                 if not hasattr(self, "_img_husky"):
-                    self._img_husky = ui.foto_tk(ui.husky(36))
+                    self._img_husky = ui.foto_tk(ui.husky(int(36 * ui.ZOOM)))
                 cv.create_image(40, h - 36, image=self._img_husky, tags=("usuario",))
             else:
                 ini = "".join(x[0] for x in self.usuario.split(" - ")[0].split()[:2])[:2]
@@ -359,14 +375,14 @@ class App(ctk.CTk):
                 cv.create_text(40, h - 36, text=ini, fill="#FFFFFF", font=(ui.FAM, 10, "bold"), tags=("usuario",))
             if comp:
                 return
-            cv.create_text(66, h - 44, text=ui.recortar(self.usuario, (ui.FAM, 9, "bold"), w - 80), anchor="w", fill=col("texto"), font=(ui.FAM, 9, "bold"))
+            cv.create_text(66, h - 44, text=ui.recortar(self.usuario, (ui.FAM, 9, "bold"), (w - 80) * Z), anchor="w", fill=col("texto"), font=(ui.FAM, 9, "bold"))
             if not self.p:
                 sub = "Sin proyecto abierto"
             elif self.p.version_trabajo in ("", "creación"):
                 sub = "Proyecto recién creado"
             else:
                 sub = f"Guardando en {os.path.basename(self.p.ruta)}"
-            cv.create_text(66, h - 27, text=ui.recortar(sub, (ui.FAM, 8), w - 80), anchor="w", fill=col("texto2"), font=(ui.FAM, 8))
+            cv.create_text(66, h - 27, text=ui.recortar(sub, (ui.FAM, 8), (w - 80) * Z), anchor="w", fill=col("texto2"), font=(ui.FAM, 8))
 
     def _boton_guardar(self, cv, x0, y, x1, comp):
         txt = getattr(self, "_txt_guardado", "")
@@ -541,7 +557,7 @@ class App(ctk.CTk):
         compacto = self.winfo_width() / esc < 1240
         if compacto != self.lat_compacto:
             self.lat_compacto = compacto
-            self.lateral.configure(width=76 if compacto else 252)
+            self.lateral.configure(width=int((76 if compacto else 252) * ui.ZOOM))
             self.dibujar_lateral()
 
     def _ayuda_lateral(self, ev):
@@ -1009,6 +1025,14 @@ class App(ctk.CTk):
                                           filetypes=[("Excel", "*.xlsx *.xlsm")])
         if ruta:
             AsistenteImportacion(self, ruta, modo="nuevo")
+
+    def reiniciar(self):
+        """Cierra (preguntando si hay cambios) y vuelve a abrir Ctrl-P con el mismo proyecto."""
+        ruta = self.p.ruta if self.p else None
+        self._reiniciar = {"ruta": ruta}
+        self.al_cerrar()
+        if self.winfo_exists():                 # se canceló el cierre
+            self._reiniciar = None
 
     def al_cerrar(self):
         if self.p and not self.cerrar_proyecto():
@@ -1795,7 +1819,7 @@ class ArbolPartidas(ctk.CTkFrame):
         if columna_extra:
             cols.append(("extra", columna_extra, 58, "center"))
         self.marco, self.tv = ui.tabla(self, cols)
-        self.tv.column("#0", width=44, minwidth=30, stretch=False)
+        self.tv.column("#0", width=int(44 * ui.ZOOM), minwidth=30, stretch=False)
         for c, *_ in cols:
             self.tv.column(c, stretch=(c == "descripcion"))
         fijas = [c for c, *_ in cols if c != "descripcion"]
@@ -2667,18 +2691,27 @@ class PaginaRegistro(Pagina):
         self.totales_viejos = False
         caja = ctk.CTkFrame(self.cab, fg_color="transparent")
         caja.grid(row=0, column=1, rowspan=2, sticky="e")
-        etiqueta(caja, "Fecha de registro", 11, color="texto2").grid(row=0, column=1, sticky="w")
+        # Ver: Día (se edita) · Semana / Mes (solo lectura, suma del período)
+        etiqueta(caja, "Ver", 11, color="texto2").grid(row=0, column=0, sticky="w")
+        self.v_vista = tk.StringVar(value="Día")
+        ui.segmentado(caja, ["Día", "Semana", "Mes"], self.v_vista, 180, cmd=lambda _: self._cambiar_vista()).grid(
+            row=1, column=0, padx=(0, 14))
+        self.v_tit_fecha = tk.StringVar(value="Fecha de registro")
+        etiqueta(caja, "", 11, color="texto2", textvariable=self.v_tit_fecha).grid(row=0, column=1, columnspan=5,
+                                                                                  sticky="w", padx=(40, 0))
         self.v_fecha = tk.StringVar(value=core.fecha_txt(core.hoy_iso()))
         ctk.CTkButton(caja, text="‹", width=32, height=34, corner_radius=8, font=F(16), fg_color=C["suave"],
-                      hover_color=C["suave_h"], text_color=C["texto"], command=lambda: self.mover_fecha(-1)).grid(row=1, column=0)
+                      hover_color=C["suave_h"], text_color=C["texto"], command=lambda: self.mover_fecha(-1)).grid(row=1, column=1)
         self.e_fecha = entrada(caja, self.v_fecha, 130, justify="center")
         self.e_fecha.configure(font=F(14, "bold"), height=34)
-        self.e_fecha.grid(row=1, column=1, padx=4)
+        self.e_fecha.grid(row=1, column=2, padx=4)
         self.e_fecha.bind("<Return>", lambda _: self.cambiar_fecha())
         self.e_fecha.bind("<FocusOut>", lambda _: self.cambiar_fecha())
         ctk.CTkButton(caja, text="›", width=32, height=34, corner_radius=8, font=F(16), fg_color=C["suave"],
-                      hover_color=C["suave_h"], text_color=C["texto"], command=lambda: self.mover_fecha(1)).grid(row=1, column=2)
-        boton(caja, "Hoy", ancho=56, command=self.hoy).grid(row=1, column=3, padx=(6, 0))
+                      hover_color=C["suave_h"], text_color=C["texto"], command=lambda: self.mover_fecha(1)).grid(row=1, column=3)
+        boton(caja, "Hoy", ancho=56, command=self.hoy).grid(row=1, column=4, padx=(6, 0))
+        self.b_fechas = boton(caja, "Fechas con avance ▾", ancho=170, command=self._menu_fechas)
+        self.b_fechas.grid(row=1, column=5, padx=(8, 0))
         self.fecha = core.hoy_iso()
         self.cuerpo.grid_columnconfigure(1, weight=1)
         self.cuerpo.grid_rowconfigure(0, weight=1)
@@ -2746,8 +2779,9 @@ class PaginaRegistro(Pagina):
         self.mostrar()
 
     def _marcas_dia(self):
+        d0, d1 = self.periodo()
         self.arbol.marcas = {r[0]: "✓" for r in self.p.con.execute(
-            "SELECT DISTINCT item FROM avances WHERE fecha=?", (self.fecha,))}
+            "SELECT DISTINCT item FROM avances WHERE fecha>=? AND fecha<=?", (d0, d1))}
 
     # ---- fecha
     def cambiar_fecha(self):
@@ -2765,12 +2799,104 @@ class PaginaRegistro(Pagina):
             return
         self.fecha = f
         self.v_fecha.set(core.fecha_txt(f))
+        self._titulo_fecha()
         self.refrescar()
 
     def mover_fecha(self, d):
         import datetime as dt
-        nueva = (core.iso_a_fecha(self.fecha) + dt.timedelta(days=d)).isoformat()
-        self.v_fecha.set(core.fecha_txt(nueva))
+        f = core.iso_a_fecha(self.fecha)
+        vista = self.v_vista.get()
+        if vista == "Semana":
+            nueva = f + dt.timedelta(days=7 * d)
+        elif vista == "Mes":
+            m = f.month - 1 + d
+            nueva = dt.date(f.year + m // 12, m % 12 + 1, 1)
+        else:
+            nueva = f + dt.timedelta(days=d)
+        self.v_fecha.set(core.fecha_txt(nueva.isoformat()))
+        self.cambiar_fecha()
+
+    # ---- vista por día / semana / mes
+    def solo_lectura(self):
+        return self.v_vista.get() != "Día"
+
+    def periodo(self):
+        """(desde, hasta) de lo que se ve: el día, su semana (según el proyecto) o su mes."""
+        import datetime as dt
+        f = core.iso_a_fecha(self.fecha)
+        vista = self.v_vista.get()
+        if vista == "Semana" and self.p:
+            d0 = f - dt.timedelta(days=(f.weekday() - self.p.inicio_semana) % 7)
+            return d0.isoformat(), (d0 + dt.timedelta(days=6)).isoformat()
+        if vista == "Mes":
+            d0 = f.replace(day=1)
+            d1 = (d0.replace(year=d0.year + (d0.month == 12), month=d0.month % 12 + 1) - dt.timedelta(days=1))
+            return d0.isoformat(), d1.isoformat()
+        return self.fecha, self.fecha
+
+    def _titulo_fecha(self):
+        d0, d1 = self.periodo()
+        vista = self.v_vista.get()
+        if vista == "Semana":
+            self.v_tit_fecha.set(f"Semana del {core.fecha_txt(d0)} al {core.fecha_txt(d1)} (solo ver)")
+        elif vista == "Mes":
+            import ctrlp_memoria as mc_
+            mm = core.iso_a_fecha(d0)
+            self.v_tit_fecha.set(f"Mes de {mc_._mes(mm.month).capitalize()} {mm.year} (solo ver)")
+        else:
+            self.v_tit_fecha.set("Fecha de registro")
+
+    def _cambiar_vista(self):
+        nueva = self.v_vista.get()
+        antes = getattr(self, "_vista_ant", "Día")
+        if nueva == antes:
+            return
+        if antes == "Día" and self.it and self.filas and self.pendientes(como_dia=True):
+            self.v_vista.set("Día")              # se pregunta con la vista del día (lo escrito está ahí)
+            if not self.puede_salir():
+                return
+            self.v_vista.set(nueva)
+            self.filas = {}
+        self._vista_ant = nueva
+        self._titulo_fecha()
+        self._marcas_dia()
+        self.arbol.cargar()
+        self.mostrar()
+
+    # ---- fechas con avance de la partida
+    def _menu_fechas(self):
+        if not self.p or not self.it:
+            ui.info(self.app, "Fechas con avance", "Primero elegí una partida en la lista.")
+            return
+        filas = self.p.con.execute(
+            "SELECT a.fecha, COUNT(DISTINCT a.nivel) n, SUM(a.cantidad * COALESCE(h.pct / 100.0, 1.0)) s, "
+            "MAX(a.marca<>'') pl FROM avances a LEFT JOIN hitos h ON h.id = a.hito WHERE a.item=? "
+            "GROUP BY a.fecha ORDER BY a.fecha DESC", (self.it["id"],)).fetchall()
+        m = tk.Menu(self, tearoff=False, font=TF(10), bg=col("tarjeta"), fg=col("texto"),
+                    activebackground=col("sel"), activeforeground=col("texto"))
+        if not filas:
+            m.add_command(label="Esta partida todavía no tiene avances", state="disabled")
+        else:
+            u = self.it.get("unidad") or ""
+            m.add_command(label=f"{len(filas)} fecha{'s' if len(filas) != 1 else ''} con avance (clic para ir)",
+                          state="disabled")
+            m.add_separator()
+            for r in filas[:80]:
+                marca = "  ← actual" if r["fecha"] == self.fecha else ""
+                pl = "  · plano" if r["pl"] else ""
+                m.add_command(label=f"{core.fecha_txt(r['fecha'])}    {fmt(r['s'])} {u}    "
+                                    f"({r['n']} ubic.){pl}{marca}",
+                              command=lambda f=r["fecha"]: self._ir_a_fecha(f))
+            if len(filas) > 80:
+                m.add_command(label=f"… y {len(filas) - 80} fechas más antiguas", state="disabled")
+        b = self.b_fechas
+        try:
+            m.tk_popup(b.winfo_rootx(), b.winfo_rooty() + b.winfo_height())
+        finally:
+            m.grab_release()
+
+    def _ir_a_fecha(self, f):
+        self.v_fecha.set(core.fecha_txt(f))
         self.cambiar_fecha()
 
     def hoy(self):
@@ -2788,7 +2914,9 @@ class PaginaRegistro(Pagina):
         self._ver_todas = False
         self.mostrar()
 
-    def pendientes(self):
+    def pendientes(self, como_dia=False):
+        if self.solo_lectura() and not como_dia:
+            return 0
         n = 0
         for f in self.filas.values():
             v = ui.leer_num(f["v"].get())
@@ -2835,12 +2963,15 @@ class PaginaRegistro(Pagina):
         it = p.item(self.it["id"])
         self.it = it
         iid = it["id"]
-        calc = core.Calculo(p, self.fecha, self.fecha)
+        d0, d1 = self.periodo()
+        lectura = self.solo_lectura()
+        calc = core.Calculo(p, d0, d1)
         self.calc_base = calc
         hitos = p.hitos_de(iid)
         con_tramos = bool(p.detalle_de(iid)["tramos"])
-        ant_h = p.ejecutado_hojas(iid, hasta=core.dia_anterior(self.fecha))
-        plano_h = p.ejecutado_hojas(iid, desde=self.fecha, hasta=self.fecha, marcas=True)
+        ant_h = p.ejecutado_hojas(iid, hasta=core.dia_anterior(d0))
+        plano_h = p.ejecutado_hojas(iid, desde=d0, hasta=d1, marcas=True)
+        per_h = p.ejecutado_hojas(iid, desde=d0, hasta=d1, marcas=False) if lectura else {}
         # cabecera
         t = ui.Tarjeta(self.panel)
         t.grid(row=0, column=0, sticky="ew", pady=(0, 12))
@@ -2887,8 +3018,9 @@ class PaginaRegistro(Pagina):
         tab.pack(fill="both", expand=True)
         ver_obs = bool(self.v_obs.get())
         anchos = (96, 0, 0, 0, 0, 0, 0, 0, 80)
-        titulos = ("Ubicación", "Contractual", "Acum. ant.", "Del día", "Acum. total", "% avance", "",
-                   "Saldo", "Observación")
+        titulos = ("Ubicación", "Contractual", "Acum. ant.",
+                   {"Semana": "De la semana", "Mes": "Del mes"}.get(self.v_vista.get(), "Del día"),
+                   "Acum. total", "% avance", "", "Saldo", "Observación")
         for k, (tt, a) in enumerate(zip(titulos, anchos)):
             if k == 8 and not ver_obs:
                 break
@@ -2901,20 +3033,28 @@ class PaginaRegistro(Pagina):
         self.labels_grupo = {}
         self.label_general = {}
         self.tab = tab
-        hoy = p.avances_del_dia(iid, self.fecha)
+        hoy = {} if lectura else p.avances_del_dia(iid, self.fecha)
         cont = p.contractual_de(iid)
+        ANCHO_NUM = 11          # ancho fijo de las cifras: escribir no obliga a reacomodar toda la tabla
         H = hitos or [None]
+
+        # la tabla se arma por tandas (primero lo que se ve): la ventana responde enseguida aunque haya cientos de filas
+        cola = []
+        self._cola_tabla = cola
 
         def fila_resumen(texto, fondo, bold=True, indent=0):
             r = self._fila_tab
             lab = {}
-            lab[0] = tk.Label(tab, text=" " * indent + texto, bg=fondo, fg=col("texto"),
-                              font=TF(10, "bold" if bold else "normal"), anchor="w", padx=6, pady=6)
-            lab[0].grid(row=r, column=0, sticky="nsew")
-            for k in [c for c in range(1, 9 if ver_obs else 8) if c != 6]:
-                lab[k] = tk.Label(tab, text="", bg=fondo, fg=col("texto"), font=TF(10, "bold" if bold else "normal"),
-                                  anchor="e", padx=6)
-                lab[k].grid(row=r, column=k, sticky="nsew")
+
+            def armar():
+                lab[0] = tk.Label(tab, text=" " * indent + texto, bg=fondo, fg=col("texto"),
+                                  font=TF(10, "bold" if bold else "normal"), anchor="w", padx=6, pady=6)
+                lab[0].grid(row=r, column=0, sticky="nsew")
+                for k in [c for c in range(1, 9 if ver_obs else 8) if c != 6]:
+                    lab[k] = tk.Label(tab, text="", bg=fondo, fg=col("texto"), font=TF(10, "bold" if bold else "normal"),
+                                      anchor="e", padx=6, width=ANCHO_NUM if k != 8 else 0)
+                    lab[k].grid(row=r, column=k, sticky="nsew")
+            cola.append(armar)
             self._fila_tab += 1
             return lab
 
@@ -2922,49 +3062,67 @@ class PaginaRegistro(Pagina):
             r = self._fila_tab
             nv, eq, tr, hi = key
             orig = hoy.get(key)
-            v = tk.StringVar(value="" if orig is None else ui.txt_num(orig["cantidad"]))
+            if lectura:
+                pv = per_h.get(key)
+                v = tk.StringVar(value="" if not pv else ui.txt_num(pv))
+            else:
+                v = tk.StringVar(value="" if orig is None else ui.txt_num(orig["cantidad"]))
             o = tk.StringVar(value="" if orig is None else (orig["obs"] or ""))
             pl = plano_h.get(key, 0.0)
             etq = " " * indent + texto + (f"  (+{fmt(pl)} en plano)" if abs(pl) > 1e-9 else "")
-            tk.Label(tab, text=etq, bg=bg, fg=col("texto"), font=TF(10, "bold" if bold else "normal"), anchor="w",
-                     padx=6).grid(row=r, column=0, sticky="nsew")
-            tk.Label(tab, text=contractual_txt, bg=bg, fg=col("texto") if contractual_txt not in ("—", "") else col("texto2"),
-                     font=TF(10), anchor="e", padx=6).grid(row=r, column=1, sticky="nsew")
             ant = ant_h.get(key, 0.0)
-            tk.Label(tab, text=fmt(ant), bg=bg, fg=col("texto"), font=TF(10), anchor="e", padx=6).grid(row=r, column=2, sticky="nsew")
-            e = tk.Entry(tab, textvariable=v, justify="right", font=TF(10, "bold"), relief="flat", bg=col("campo"),
-                         fg=col("texto"), insertbackground=col("texto"), highlightthickness=1,
-                         highlightbackground=col("campo_borde"), highlightcolor=col("acento"), width=9,
-                         disabledbackground=col("suave"), disabledforeground=col("texto2"))
-            e.grid(row=r, column=3, sticky="ew", padx=6, pady=4, ipady=3)
             lab = {}
-            for k in (4, 5, 7):
-                lab[k] = tk.Label(tab, text="", bg=bg, fg=col("texto"), font=TF(10), anchor="e", padx=6)
-                lab[k].grid(row=r, column=k, sticky="nsew")
-            eo = tk.Entry(tab, textvariable=o, font=TF(10), relief="flat", bg=bg, fg=col("texto"), width=6,
-                          disabledbackground=col("suave"), disabledforeground=col("texto2"),
-                          insertbackground=col("texto"), highlightthickness=1, highlightbackground=col("borde"),
-                          highlightcolor=col("acento"))
-            if ver_obs:
-                eo.grid(row=r, column=8, sticky="ew", padx=6, pady=4, ipady=3)
-            if orig is not None and not p.puede_editar_avance(orig):
-                e.configure(state="disabled")
-                eo.configure(state="disabled")
-            self.filas[key] = {"v": v, "obs": o, "orig": orig, "lab": lab, "ant": ant, "plano": pl, "factor": factor,
-                               "base": base, "nivel": nv, "edificio": edificio, "entry": e, "es_hito": bool(hi)}
+            fila = {"v": v, "obs": o, "orig": orig, "lab": lab, "ant": ant, "plano": pl, "factor": factor,
+                    "base": base, "nivel": nv, "edificio": edificio, "entry": None, "es_hito": bool(hi)}
+            self.filas[key] = fila
+            bloqueada = lectura or (orig is not None and not p.puede_editar_avance(orig))
+
+            def armar():
+                tk.Label(tab, text=etq, bg=bg, fg=col("texto"), font=TF(10, "bold" if bold else "normal"),
+                         anchor="w", padx=6).grid(row=r, column=0, sticky="nsew")
+                tk.Label(tab, text=contractual_txt, bg=bg,
+                         fg=col("texto") if contractual_txt not in ("—", "") else col("texto2"),
+                         font=TF(10), anchor="e", padx=6, width=ANCHO_NUM).grid(row=r, column=1, sticky="nsew")
+                tk.Label(tab, text=fmt(ant), bg=bg, fg=col("texto"), font=TF(10), anchor="e", padx=6,
+                         width=ANCHO_NUM).grid(row=r, column=2, sticky="nsew")
+                e = tk.Entry(tab, textvariable=v, justify="right", font=TF(10, "bold"), relief="flat",
+                             bg=col("campo"), fg=col("texto"), insertbackground=col("texto"), highlightthickness=1,
+                             highlightbackground=col("campo_borde"), highlightcolor=col("acento"), width=9,
+                             disabledbackground=col("suave"), disabledforeground=col("texto2"))
+                e.grid(row=r, column=3, sticky="ew", padx=6, pady=4, ipady=3)
+                for k in (4, 5, 7):
+                    lab[k] = tk.Label(tab, text="", bg=bg, fg=col("texto"), font=TF(10), anchor="e", padx=6,
+                                      width=ANCHO_NUM)
+                    lab[k].grid(row=r, column=k, sticky="nsew")
+                eo = None
+                if ver_obs and not lectura:          # la casilla de observación solo se crea si se ve
+                    eo = tk.Entry(tab, textvariable=o, font=TF(10), relief="flat", bg=bg, fg=col("texto"), width=6,
+                                  disabledbackground=col("suave"), disabledforeground=col("texto2"),
+                                  insertbackground=col("texto"), highlightthickness=1,
+                                  highlightbackground=col("borde"), highlightcolor=col("acento"))
+                    eo.grid(row=r, column=8, sticky="ew", padx=6, pady=4, ipady=3)
+                if bloqueada:
+                    e.configure(state="disabled")
+                    if eo is not None:
+                        eo.configure(state="disabled")
+                fila["entry"] = e
+                tk.Frame(tab, height=1, bg=col("linea")).grid(row=r + 1, column=0, columnspan=9, sticky="ew")
+                if fila.get("pintar"):
+                    self._pintar_fila(fila)
+            cola.append(armar)
             v.trace_add("write", lambda *_, key=key: self._cambio_fila(key))
             o.trace_add("write", lambda *_: self._estado())
-            self._fila_tab += 1
-            tk.Frame(tab, height=1, bg=col("linea")).grid(row=self._fila_tab, column=0, columnspan=9, sticky="ew")
-            self._fila_tab += 1
+            self._fila_tab += 2
 
         con_equipos = bool(p.detalle_de(iid)["equipos"])
         cant_tipos = p.cant_tipos_de(iid)
 
         def boton_mas(texto, fila_tk, cmd, fondo):
-            b = tk.Label(tab, text=texto, bg=fondo, fg=col("acento"), font=TF(9, "bold"), cursor="hand2", padx=4)
-            b.grid(row=fila_tk, column=0, sticky="e", padx=4)
-            b.bind("<Button-1>", lambda _: cmd())
+            def armar():
+                b = tk.Label(tab, text=texto, bg=fondo, fg=col("acento"), font=TF(9, "bold"), cursor="hand2", padx=4)
+                b.grid(row=fila_tk, column=0, sticky="e", padx=4)
+                b.bind("<Button-1>", lambda _: cmd())
+            cola.append(armar)
 
         def bloque(nv, eq, base_grupo, edificio, indent):
             """Filas de un grupo (nivel o equipo): tramos (si hay) y dentro hitos (si hay). Devuelve las claves."""
@@ -3074,21 +3232,56 @@ class PaginaRegistro(Pagina):
                         self.cabeceras.append({"lab": labe, "keys": ks, "base": base_eq})
                         keys_nv += ks
                 self.cabeceras.append({"lab": labn, "keys": keys_nv, "base": c_nv})
-                rangos_nv.append((nv, nombre, labn[0], r0_nv, self._fila_tab, len(keys_nv)))
+                rangos_nv.append((nv, nombre, labn, r0_nv, self._fila_tab, len(keys_nv)))
             if not g["es_area"] and len(filas_g) > 1:
                 self.labels_grupo[g["edificio"]] = fila_resumen(f"Total {g['nombre']}", col("subtotal"))
         self.label_general = fila_resumen("General", col("titulo0"))
-        self._plegar_niveles(tab, iid, rangos_nv, {k[0] for k in hoy})
         self.v_nota = tk.StringVar()
         ln = etiqueta(self.panel, "", 12, color="texto2", textvariable=self.v_nota, wraplength=900, justify="left")
         ln.grid(row=2, column=0, sticky="w", pady=(10, 0))
         ui.ajustar_texto(ln, cab, 0, 200)        # cab se borra con la partida: no se acumulan escuchadores
-        self.recalcular()
+        con_av = {k[0] for k in (per_h if lectura else hoy)}
+
+        def fin():
+            self._plegar_niveles(tab, iid, rangos_nv, con_av)
+            self.recalcular()
+        self._armar_por_tandas(cola, fin)
 
     # Windows no dibuja una ventana de más de 32 767 px de alto: con muchos niveles y detalle (tipos, hitos,
     # tramos…) la tabla se pasaba de eso y se veía en blanco. Entonces el detalle de cada nivel se pliega y se
     # abre con un clic en el nombre del nivel; los niveles con avance en la fecha quedan abiertos.
     ALTO_MAX_TABLA = 22000      # px estimados de detalle a partir de los cuales se pliega
+
+    TANDA_PRIMERA = 90          # filas que se arman de una (lo que se ve al abrir)
+    TANDA = 70                  # y luego de a tantas, dejando respirar a la ventana
+
+    def _armar_por_tandas(self, cola, fin):
+        tok = object()
+        self._tok_tabla = tok
+        self.armando = True
+        pos = [0]
+
+        def paso(n):
+            if getattr(self, "_tok_tabla", None) is not tok:
+                return                          # se cambió de partida o de fecha: esta tabla ya no va
+            try:
+                hasta = min(len(cola), pos[0] + n)
+                for k in range(pos[0], hasta):
+                    cola[k]()
+                pos[0] = hasta
+            except tk.TclError:
+                return                          # la página se cerró mientras se armaba
+            if pos[0] < len(cola):
+                self.after(1, lambda: paso(self.TANDA))
+            else:
+                self.armando = False
+                fin()
+        if len(cola) <= self.TANDA_PRIMERA * 2:
+            paso(len(cola))
+        else:
+            paso(self.TANDA_PRIMERA)
+            if self.armando:
+                self.recalcular()               # lo armado ya muestra sus totales
 
     def _alternar_todas(self, si):
         if self.pendientes() and not self._guardar_antes("Mostrar ubicaciones"):
@@ -3110,7 +3303,8 @@ class PaginaRegistro(Pagina):
             abiertos = set()
             self._abiertos = {iid: abiertos}
         abiertos |= set(con_avance)
-        for nv, nombre, lab0, r0, r1, _ in rangos:
+        for nv, nombre, labd, r0, r1, _ in rangos:
+            lab0 = labd[0]
             ws = [w for r in range(r0, r1) for w in por_fila.get(r, [])]
             self._pliegue[nv] = (ws, lab0, nombre)
             lab0.configure(cursor="hand2")
@@ -3190,6 +3384,9 @@ class PaginaRegistro(Pagina):
         v = ui.leer_num(f["v"].get())
         hoy = 0.0 if v in (None, "error") else v
         raw_tot = f["ant"] + f["plano"] + hoy
+        if f["entry"] is None:                  # todavía no se armó (tabla por tandas): se pinta al armarla
+            f["pintar"] = True
+            return f["ant"], f["plano"] + hoy, raw_tot
         base = f["base"]
         listo = bool(base) and raw_tot >= base * (1 - 5e-5)      # al 100 % o mas: en verde
         verde = col("verde")
@@ -3209,8 +3406,11 @@ class PaginaRegistro(Pagina):
         if f is None:
             return
         self._pintar_fila(f)
-        self.totales_viejos = True
-        self._estado()
+        if not self.totales_viejos:
+            self.totales_viejos = True
+            self._estado()
+        else:
+            self._estado_rapido()
 
     def recalcular(self):
         if not self.it or not self.filas:
@@ -3243,9 +3443,11 @@ class PaginaRegistro(Pagina):
             return a, d, a + d
 
         for c in self.cabeceras:
+            lab = c["lab"]
+            if not lab:                         # fila de resumen todavía sin armar (tabla por tandas)
+                continue
             a, d, t_ = eq(c["keys"])
             base = c["base"]
-            lab = c["lab"]
             lab[1].configure(text=fmt(base))
             lab[2].configure(text=fmt(a))
             lab[3].configure(text=fmt(d))
@@ -3261,6 +3463,8 @@ class PaginaRegistro(Pagina):
             por_nv_tot[nv] = por_nv_tot.get(nv, 0.0) + vals[key][2] * f["factor"]
         cont = self.p.contractual_de(it["id"])
         for ed, gl in self.labels_grupo.items():
+            if not gl:
+                continue
             nvs = {f["nivel"] for f in self.filas.values() if f["edificio"] == ed}
             conts = [cont[n] for n in nvs if n in cont]
             sc = sum(conts) if conts else None
@@ -3276,13 +3480,14 @@ class PaginaRegistro(Pagina):
         a = sum(por_nv_ant.values())
         t_ = sum(por_nv_tot.values())
         g = self.label_general
-        g[1].configure(text=fmt(cant))
-        g[2].configure(text=fmt(a))
-        g[3].configure(text=fmt(t_ - a))
-        g[4].configure(text=fmt(t_))
-        g[5].configure(text=fmt_pct(core.pct(t_, cant)))
-        pinta_saldo(g[7], cant - t_, True)
-        pinta_listo(g, t_, cant)
+        if g:
+            g[1].configure(text=fmt(cant))
+            g[2].configure(text=fmt(a))
+            g[3].configure(text=fmt(t_ - a))
+            g[4].configure(text=fmt(t_))
+            g[5].configure(text=fmt_pct(core.pct(t_, cant)))
+            pinta_saldo(g[7], cant - t_, True)
+            pinta_listo(g, t_, cant)
         self.v_gen.set(fmt_pct(core.pct(t_, cant)))
         self.l_gen.configure(text_color=C["verde"] if cant and t_ >= cant * (1 - 5e-5) else C["texto"])
         # cobrable del dia con topes en cadena (nivel › equipo › tramo)
@@ -3308,8 +3513,22 @@ class PaginaRegistro(Pagina):
         self.v_nota.set("     ".join(notas))
         self._estado()
 
+    def _estado_rapido(self):
+        """Al escribir: solo el contador de avances sin guardar, y solo si cambió (no reacomoda la ventana)."""
+        n = self.pendientes() if self.filas else 0
+        if n != getattr(self, "_n_pend", None):
+            self._estado()
+
     def _estado(self):
         n = self.pendientes() if self.filas else 0
+        self._n_pend = n
+        if self.filas and self.solo_lectura():
+            d0, d1 = self.periodo()
+            self.v_estado.set(f"Solo ver: {self.v_vista.get().lower()} del {core.fecha_txt(d0)} al "
+                              f"{core.fecha_txt(d1)}. Para escribir o corregir, volvé a «Día».")
+            self.v_monto.set(f"Monto cobrable del período en esta partida: {self.p.get_meta('moneda', 'US$')} "
+                             f"{fmt(getattr(self, 'monto_dia', 0))}")
+            return
         self.v_estado.set((f"{n} avances sin guardar · {core.fecha_txt(self.fecha)}" if n else
                            f"Fecha de registro: {core.fecha_txt(self.fecha)}") +
                           ("   ·   Totales sin actualizar: tocá Refrescar (F5) o Guardar"
@@ -3328,6 +3547,9 @@ class PaginaRegistro(Pagina):
 
     def guardar(self, preguntar_plano=True):
         if not self.it:
+            return True
+        if self.solo_lectura():
+            ui.info(self.app, "Registro de avance", "En «Semana» y «Mes» solo se ve. Para guardar avances, volvé a «Día».")
             return True
         errores = [f["v"].get() for f in self.filas.values() if ui.leer_num(f["v"].get()) == "error"]
         if errores:
@@ -3353,7 +3575,16 @@ class PaginaRegistro(Pagina):
         self.arbol.poner_marca(self.it["id"], self.arbol.marcas.get(self.it["id"], ""))
         self.arbol.actualizar_completa(self.it["id"])
         guardados = list(self.filas.items())
-        self.mostrar()
+        if n and not getattr(self, "armando", False):
+            # lo guardado queda como está en pantalla: no se vuelve a armar la tabla (era lo que más tardaba)
+            hoy = self.p.avances_del_dia(self.it["id"], self.fecha)
+            for key, f in self.filas.items():
+                f["orig"] = hoy.get(key)
+                if f["orig"] is None and ui.leer_num(f["v"].get()) in (None, 0.0) and f["v"].get():
+                    f["v"].set("")
+            self.recalcular()
+        else:
+            self.mostrar()
         self.v_estado.set((f"{n} avance guardado" if n == 1 else f"{n} avances guardados") + f" · {core.fecha_txt(self.fecha)}" if n else "Sin cambios para guardar.")
         if n and preguntar_plano:
             niveles = []
@@ -3522,6 +3753,15 @@ class PaginaInformes(Pagina):
             self._grafica(*self._graf_datos)
 
     def _grafica(self, partes, mon, titulo):
+        """Se dibuja en medidas de 100 % y se agranda con el tamaño elegido en Apariencia."""
+        self._grafica_base(partes, mon, titulo)
+        z = ui.ZOOM
+        if abs(z - 1) > 1e-3:
+            cv = self.cv_pastel
+            cv.configure(width=int(float(cv["width"]) * z), height=int(float(cv["height"]) * z))
+            cv.scale("all", 0, 0, z, z)
+
+    def _grafica_base(self, partes, mon, titulo):
         """Grafica de porcentajes: ejecutado antes del periodo, cobrado en el periodo y lo que falta."""
         self._graf_datos = (partes, mon, titulo)
         tipo = self.v_tipo_graf.get()
@@ -4264,7 +4504,7 @@ class PaginaPlanos(Pagina):
         cols = [("desc", "Actividad del día", 200, "w"), ("falta", "Sin marcar", 80, "e")]
         m1, self.tv_act = ui.tabla(izq, cols)
         self.tv_act.configure(height=3)       # alto minimo chico: el espacio extra se reparte con los pesos
-        self.tv_act.column("#0", width=26, minwidth=22)
+        self.tv_act.column("#0", width=int(26 * ui.ZOOM), minwidth=22)
         m1.grid(row=2, column=0, sticky="nsew", padx=8)
         self.tv_act.bind("<<TreeviewSelect>>", lambda _: self._elegir_act())
         boton(izq, "Otra actividad…", ancho=150, command=self.otra_actividad).grid(row=3, column=0, sticky="w", padx=14, pady=(6, 4))
@@ -5104,6 +5344,20 @@ class PaginaApariencia(Pagina):
             self.botones[modo] = b
         etiqueta(t, "Automático sigue el modo de Windows (claro u oscuro).", 11, color="texto2").grid(
             row=1, column=0, sticky="w", padx=22, pady=(0, 16))
+        # tamaño de letra y controles (pantallas grandes, proyector, monitores por HDMI)
+        tz = ui.Tarjeta(self.cuerpo)
+        tz.grid(row=2, column=0, sticky="nw", pady=(16, 0))
+        etiqueta(tz, "Tamaño de letra y controles", 15, "bold").grid(row=0, column=0, sticky="w", padx=22,
+                                                                     pady=(16, 2))
+        actual = float(app.cfg.get("zoom", 1.0) or 1.0)
+        self.v_zoom = tk.StringVar(value=self._txt_zoom(actual))
+        ui.segmentado(tz, [self._txt_zoom(z) for z in self.ZOOMS], self.v_zoom, 76 * len(self.ZOOMS),
+                      cmd=lambda v: self._elegir_zoom(v)).grid(row=1, column=0, sticky="w", padx=22, pady=(6, 0))
+        etiqueta(tz, "Si en un monitor grande, un televisor o un proyector las letras se ven chicas, subí el tamaño. "
+                     "Ctrl-P ya no cambia de escala al pasar la ventana de una pantalla a otra (así no se pega ni se "
+                     "pone transparente); se usa el tamaño elegido aquí. Se aplica al reiniciar Ctrl-P.", 11,
+                 color="texto2", wraplength=560, justify="left").grid(row=2, column=0, sticky="w", padx=22,
+                                                                       pady=(8, 16))
         t2 = ui.Tarjeta(self.cuerpo)
         t2.grid(row=1, column=0, sticky="nw", pady=(16, 0))
         etiqueta(t2, "Actualizaciones", 15, "bold").grid(row=0, column=0, columnspan=3, sticky="w", padx=22, pady=(16, 2))
@@ -5114,6 +5368,26 @@ class PaginaApariencia(Pagina):
         etiqueta(t2, "Al abrir, Ctrl-P revisa si hay una versión nueva (si no hay internet, no molesta). Actualizar "
                      "nunca es obligatorio y no toca tus proyectos ni la carpeta CTRL-P DOC.", 11, color="texto2",
                  wraplength=560, justify="left").grid(row=2, column=0, columnspan=3, sticky="w", padx=22, pady=(8, 16))
+
+    ZOOMS = (0.9, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0)
+
+    @staticmethod
+    def _txt_zoom(z):
+        return f"{round(z * 100)} %"
+
+    def _elegir_zoom(self, v):
+        z = next((x for x in self.ZOOMS if self._txt_zoom(x) == v), 1.0)
+        if abs(z - float(self.app.cfg.get("zoom", 1.0) or 1.0)) < 1e-3 and abs(z - ui.ZOOM) < 1e-3:
+            return
+        self.app.cfg = core.config_poner(zoom=z)
+        if abs(z - ui.ZOOM) < 1e-3:
+            return
+        r = ui.dialogo_texto(self.app, "Tamaño de letra y controles",
+                             f"Se va a usar {v}. Para aplicarlo, Ctrl-P se cierra y se vuelve a abrir con el mismo "
+                             "proyecto (si hay cambios sin guardar, te pregunta antes).",
+                             ("Después", "Reiniciar ahora"), primario=1)
+        if r == 1:
+            self.app.reiniciar()
 
     def refrescar(self):
         actual = self.app.cfg.get("apariencia", "Automático")
@@ -5140,6 +5414,7 @@ class Ventana(ctk.CTkToplevel):
         self.geometry(f"{ancho}x{alto}")
         self.minsize(min(820, ancho), min(560, alto))
         self.transient(app)
+        ui.configure_solo_ventana(self)
         ui.icono_ventana(self)
         self.after(80, lambda: ui.tenir_barra_titulo(self, ui.oscuro()))
         self.after(120, self._centrar)
@@ -7591,6 +7866,16 @@ def main():
             ctrlp_render.cerrar()
         except Exception:
             pass
+    re_ = getattr(app, "_reiniciar", None) if "app" in locals() else None
+    if re_ is not None:                         # Apariencia › tamaño: se vuelve a abrir
+        import subprocess
+        cmd = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, os.path.abspath(sys.argv[0])]
+        if re_.get("ruta") and os.path.isfile(re_["ruta"]):
+            cmd.append(re_["ruta"])
+        try:
+            subprocess.Popen(cmd, close_fds=True)
+        except Exception:
+            registrar_error("Error", "No se pudo volver a abrir Ctrl-P:\n" + traceback.format_exc())
 
 
 if __name__ == "__main__":

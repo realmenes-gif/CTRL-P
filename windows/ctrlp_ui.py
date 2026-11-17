@@ -39,6 +39,78 @@ def _blindar_entry():
 
 _blindar_entry()
 
+
+# ---------------------------------------------------------------- escala fija y tamaño elegido
+ZOOM = 1.0
+ESCALA_FIJA = None
+
+
+def fijar_escala(raiz, zoom=1.0):
+    """La escala se toma una sola vez al abrir y queda fija.
+    CustomTkinter, al pasar la ventana a un monitor con otra escala de Windows, reescalaba todos los controles
+    con la ventana casi transparente: con muchos controles se pegaba (y fallaba con menús ya cerrados). Ahora no
+    se reescala al mover la ventana; el tamaño de letra y controles se elige en Apariencia (zoom)."""
+    global ZOOM, ESCALA_FIJA
+    T = ctk.ScalingTracker
+    try:
+        ESCALA_FIJA = T.window_dpi_scaling_dict.get(raiz) or T.get_window_dpi_scaling(raiz)
+    except Exception:
+        ESCALA_FIJA = 1.0
+    T.get_window_dpi_scaling = classmethod(lambda cls, w: ESCALA_FIJA)
+    T.check_dpi_scaling = classmethod(lambda cls: None)
+
+    def todos(cls):
+        for window, lista in list(cls.window_widgets_dict.items()):
+            for cb in list(lista):
+                try:
+                    cb(cls.window_dpi_scaling_dict.get(window, ESCALA_FIJA) * cls.widget_scaling,
+                       cls.window_dpi_scaling_dict.get(window, ESCALA_FIJA) * cls.window_scaling)
+                except tk.TclError:
+                    try:
+                        lista.remove(cb)          # control ya cerrado
+                    except ValueError:
+                        pass
+    T.update_scaling_callbacks_all = classmethod(todos)
+    try:
+        zoom = float(zoom)
+    except (TypeError, ValueError):
+        zoom = 1.0
+    zoom = min(2.5, max(0.7, zoom))
+    ZOOM = zoom
+    if abs(zoom - 1.0) > 1e-3:
+        try:
+            base = float(raiz.tk.call("tk", "scaling"))
+            raiz.tk.call("tk", "scaling", base * zoom)       # letras de las tablas (tk/ttk, en puntos)
+        except Exception:
+            pass
+        T.set_widget_scaling(zoom)                           # controles de CustomTkinter
+
+
+def configure_solo_ventana(win, extras=()):
+    """El <Configure> de la ventana se ataba a TODOS sus controles (Tk reparte los eventos de la ventana a cada
+    control hijo): al armar una tabla grande eran miles de llamadas a Python. Ahora solo llega cuando cambia la
+    ventana misma."""
+    try:
+        win.unbind("<Configure>")
+
+        class _Ev:
+            pass
+
+        def h(wid, hei):
+            ev = _Ev()
+            ev.widget, ev.width, ev.height = win, int(wid), int(hei)
+            try:
+                win._update_dimensions_event(ev)
+            except Exception:
+                pass
+            for f in extras:
+                f(ev)
+        nombre = win.register(h)
+        w = win._w
+        win.tk.eval(f'bind {w} <Configure> {{if {{"%W" eq "{w}"}} {{{nombre} %w %h}}}}')
+    except Exception:
+        pass
+
 # Paleta: (claro, oscuro)
 C = {
     "lat_ini": ("#EEF2F7", "#272D36"), "lat_fin": ("#D6DFEA", "#1D2229"), "lat_sel": ("#C3CFDF", "#353F4C"),
@@ -148,6 +220,15 @@ def col(k):
 
 def F(tam=13, peso="normal"):
     return ctk.CTkFont(family=FAM, size=tam, weight=peso)
+
+
+def _alto_fila(raiz):
+    """Alto de fila de las tablas según la letra real (crece con el tamaño elegido en Apariencia)."""
+    try:
+        import tkinter.font as tkf
+        return max(28, int(tkf.Font(root=raiz, font=TF(10)).metrics("linespace") * 1.65))
+    except Exception:
+        return 28
 
 
 def TF(tam=10, peso="normal"):
@@ -898,7 +979,7 @@ def estilo_tablas(raiz):
     except Exception:
         pass
     st.configure("Ctrl.Treeview", background=col("tarjeta"), fieldbackground=col("tarjeta"),
-                 foreground=col("texto"), rowheight=28, borderwidth=0, font=TF(10), indent=11)
+                 foreground=col("texto"), rowheight=_alto_fila(raiz), borderwidth=0, font=TF(10), indent=11)
     st.map("Ctrl.Treeview", background=[("selected", col("sel"))], foreground=[("selected", col("texto"))])
     st.configure("Ctrl.Treeview.Heading", background=col("subtotal"), foreground=col("texto2"),
                  font=TF(9, "bold"), relief="flat", borderwidth=0, padding=(6, 6))
@@ -915,9 +996,9 @@ def tabla(master, columnas, alturas=None, arbol=True):
                       show="tree headings" if arbol else "headings", selectmode="browse")
     for clave, titulo, ancho, ancla in columnas:
         tv.heading(clave, text=titulo, anchor=ancla)
-        tv.column(clave, width=ancho, minwidth=40, anchor=ancla, stretch=(clave == "descripcion"))
+        tv.column(clave, width=int(ancho * ZOOM), minwidth=40, anchor=ancla, stretch=(clave == "descripcion"))
     if arbol:
-        tv.column("#0", width=64, minwidth=40, stretch=False)
+        tv.column("#0", width=int(64 * ZOOM), minwidth=40, stretch=False)
     sb = ctk.CTkScrollbar(marco, command=tv.yview, button_color=C["suave_h"], button_hover_color=C["borde"])
     tv.configure(yscrollcommand=sb.set)
     sbx = ctk.CTkScrollbar(marco, command=tv.xview, orientation="horizontal", button_color=C["suave_h"],
@@ -1000,10 +1081,10 @@ def tabla_fija(master, izq, centro, der):
                           show="tree headings" if nombre == "izq" else "headings", selectmode="browse")
         for clave, titulo, ancho, ancla in cols:
             tv.heading(clave, text=titulo, anchor=ancla)
-            tv.column(clave, width=ancho, minwidth=40, anchor=ancla,
+            tv.column(clave, width=int(ancho * ZOOM), minwidth=40, anchor=ancla,
                       stretch=(nombre == "izq" and clave == "descripcion" and not centro))
         if nombre == "izq":
-            tv.column("#0", width=40, minwidth=30, stretch=False)
+            tv.column("#0", width=int(40 * ZOOM), minwidth=30, stretch=False)
         tv.grid(row=0, column=col, sticky="nsew", padx=((8 if col == 0 else 0), 0), pady=(8, 0))
         marco.grid_columnconfigure(col, weight=1 if (nombre == "centro" or (nombre == "izq" and not centro)) else 0)
         etiquetas_tabla(tv)
