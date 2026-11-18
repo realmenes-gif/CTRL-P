@@ -267,11 +267,16 @@ def armar_hoja(ws, pos, it, ubic, tipo, cont, filas, registro, fecha, enmienda, 
     if "ubicacion" in pos:
         ws[pos["ubicacion"].coordinate] = ubic
     # filas
+    L_ = lambda k: openpyxl.utils.get_column_letter(c0 + k)       # letra de la columna k de la tabla
+    F, G, H, I, J, K, Lc, M, N, O = (L_(k) for k in range(4, 14))
     for k, f in enumerate(filas):
         r = f1 + k
+        # datos de Ctrl-P como valores; las cuentas como fórmulas (se pueden revisar y ajustar en Excel)
         vals = [k + 1, it["codigo"], f["hito"], ubic, round(cont, 2), f["pct"], round(f["ant"], 2),
-                round(f["ant"] / cont, 6) if cont else 0, round(f["per"], 2), enmienda, round(f["enm"], 2),
-                round(f["cob"], 2), round(f["pend_cant"], 2), round(f["pend"], 6)]
+                f"=IF({F}{r}>0,{H}{r}/{F}{r},0)", round(f["per"], 2), enmienda,
+                f"=IF({F}{r}>0,ROUND(MIN({J}{r}*{K}{r},MAX(0,{F}{r}-{H}{r})),2),ROUND({J}{r}*{K}{r},2))",
+                f"=ROUND({Lc}{r}*{G}{r},2)", f"=IF({F}{r}>0,MAX(0,{F}{r}-{H}{r}-{Lc}{r}),0)",
+                f"=IF({F}{r}>0,MAX(0,1-({H}{r}+{Lc}{r})/{F}{r}),0)"]
         for c, v in enumerate(vals):
             cel = ws.cell(r, c0 + c)
             cel.value = v
@@ -286,9 +291,9 @@ def armar_hoja(ws, pos, it, ubic, tipo, cont, filas, registro, fecha, enmienda, 
     ws.cell(tot, c0).value = f"TOTAL A COBRAR ({unidad} equivalentes) · % DE LA PARTIDA EN ESTE EDIFICIO Y NIVEL"
     ws.cell(tot, c0).alignment = CENTRO
     ct = ws.cell(tot, c0 + 11)
-    ct.value, ct.number_format, ct.alignment = total, "#,##0.00", DER
+    ct.value, ct.number_format, ct.alignment = f"=SUM({M}{f1}:{M}{tot - 1})", "#,##0.00", DER
     cp = ws.cell(tot, c0 + 13)
-    cp.value, cp.number_format, cp.alignment = (round(total / cont, 6) if cont else 0), "0.00%", DER
+    cp.value, cp.number_format, cp.alignment = f"=IF({F}{f1}>0,{M}{tot}/{F}{f1},0)", "0.00%", DER
     # nota en Observaciones
     if nota:
         for r in range(tot + 1, tot + 8):
@@ -381,6 +386,7 @@ def generar(p, formato, actas, corte, hasta, fecha_acta, primer_num, enmienda, r
         hechas.append((registro, ubic, tipo or it["codigo"], total))
         num += 1
     wb.remove(plantilla)
+    wb.calculation.fullCalcOnLoad = True          # Excel calcula las fórmulas al abrir
     if not wb.worksheets:
         raise ErrorActa("No hay actas para generar.")
     wb.active = 0

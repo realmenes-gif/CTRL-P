@@ -1,4 +1,8 @@
-## Ctrl-P v1.27 (Windows)
+## Ctrl-P v1.28 (Windows)
+
+- Actas: las cuentas van con fórmulas de Excel (% anterior, período con enmienda y tope, equivalente a cobrar, cantidad y % pendiente, total y su %). Los datos de Ctrl-P (contractual, % del hito, anterior, período, enmienda) quedan como valores, así podés revisar o ajustar en Excel y todo se recalcula.
+
+### Incluye lo de la v1.27
 
 - Informes › «Generar actas»: con el formato Excel de la actividad (por ejemplo, el formulario de liberación de Tabiquería) saca un acta por edificio, nivel y tipo, todas en un libro (una hoja por acta). Eliges el formato, el corte anterior, el período, la fecha del acta, el primer número de registro y la enmienda; cada hito muestra lo contractual, el anterior (cantidad y %), lo del período, la enmienda con tope en lo contractual, el equivalente a cobrar y lo pendiente. Ctrl-P recuerda el último corte y el último número.
 - Proyecto › «Formatos de actas»: cargas el Excel de cada actividad y eliges sus partidas, el código del registro, la enmienda y la nota de observaciones. El formato queda guardado dentro del proyecto.
