@@ -32,12 +32,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.28"
-VERSION_INTERNA = "1.28"
+VERSION = "v1.29"
+VERSION_INTERNA = "1.29"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.29", [
+        "«Solo lo contractual» (Informes, Exportar, corte y memorias) y el monto cobrable de Registro topan por hito, igual que las actas: si lo contractual son 50 M2, no se cobran más de 50 de estructura, 50 de lámina, etc. Lo que sobra en un hito ya no tapa lo que falta en otro.",
+    ]),
     ("v1.28", [
         "Actas: las cuentas van con fórmulas de Excel (% anterior, período con enmienda y tope, equivalente a cobrar, cantidad y % pendiente, total y su %). Los datos de Ctrl-P (contractual, % del hito, anterior, período, enmienda) quedan como valores, así podés revisar o ajustar en Excel y todo se recalcula.",
     ]),

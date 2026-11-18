@@ -1563,13 +1563,59 @@ class Proyecto:
             res.setdefault(r["item"], {})[(r["nivel"], r["equipo"] or "", r["tramo"] or "")] = r["s"] or 0.0
         return res
 
+    def desglose_tope_hitos(self, hasta, cont=None):
+        """Como ejecutado_desglose(hasta), pero en las partidas por hitos cada hito cuenta como máximo hasta lo
+        contractual de su ubicación (o de su tipo en esa ubicación): si son 50 M2, no se cobran más de 50 de
+        estructura, 50 de lámina, etc. Lo que sobra en un hito no compensa lo que falta en otro (igual que las actas).
+        Las cantidades por tramo o equipo siguen con sus propios topes."""
+        cont = cont if cont is not None else self.todo_contractual()
+        dg = self.ejecutado_desglose(hasta=hasta)
+        hitos = {r["id"]: (r["item"], r["tipo"] or "", (r["pct"] or 0.0) / 100.0)
+                 for r in self.con.execute("SELECT id, item, tipo, pct FROM hitos")}
+        if not hitos:
+            return dg
+        tipos = {}
+        for r in self.con.execute("SELECT item, nivel, tipo, cantidad FROM tipo_cant"):
+            tipos[(r["item"], r["nivel"], r["tipo"])] = r["cantidad"] or 0.0
+        q = "SELECT item, nivel, hito, SUM(cantidad) s FROM avances WHERE hito<>'' AND equipo='' AND tramo=''"
+        args = []
+        if hasta:
+            q += " AND fecha<=?"
+            args.append(hasta)
+        directo = {}
+        for r in self.con.execute(q + " GROUP BY item, nivel, hito", args):
+            h = hitos.get(r["hito"])
+            if not h:
+                continue
+            iid, tipo, f = h
+            base = tipos.get((iid, r["nivel"], tipo)) if tipo else None
+            if base is None:
+                base = (cont.get(iid) or {}).get(r["nivel"])
+            q_h = r["s"] or 0.0
+            if base is not None and base > EPS:
+                q_h = min(q_h, base)
+            directo[(iid, r["nivel"])] = directo.get((iid, r["nivel"]), 0.0) + q_h * f
+        for (iid, nv), v in directo.items():
+            d = dg.setdefault(iid, {})
+            sin_hito = self._directo_sin_hito(iid, nv, hasta)
+            d[(nv, "", "")] = v + sin_hito
+        return dg
+
+    def _directo_sin_hito(self, iid, nv, hasta):
+        q = "SELECT SUM(cantidad) FROM avances WHERE item=? AND nivel=? AND (hito='' OR hito IS NULL) AND equipo='' AND tramo=''"
+        args = [iid, nv]
+        if hasta:
+            q += " AND fecha<=?"
+            args.append(hasta)
+        return self.con.execute(q, args).fetchone()[0] or 0.0
+
     def ejecutado_contractual(self, hasta=None):
         """Como ejecutado(hasta), pero en las partidas repartidas por ubicacion (con cantidad contractual por
         ubicacion) solo cuentan las ubicaciones que tienen cantidad, y cada una hasta su cantidad
         (con los topes de equipos y tramos). Las partidas sin repartir quedan igual."""
         ex = self.ejecutado(hasta=hasta)
         cont = self.todo_contractual()
-        dg = self.ejecutado_desglose(hasta=hasta)
+        dg = self.desglose_tope_hitos(hasta, cont)
         eqs, trs = self.estructura_topes()
         cant = {r["id"]: r["cantidad"] for r in self.con.execute("SELECT id, cantidad FROM items")}
         res = {}

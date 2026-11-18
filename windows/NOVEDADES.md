@@ -1,4 +1,8 @@
-## Ctrl-P v1.28 (Windows)
+## Ctrl-P v1.29 (Windows)
+
+- «Solo lo contractual» (Informes, Exportar, corte y memorias) y el monto cobrable de Registro topan por hito, igual que las actas: si lo contractual son 50 M2, no se cobran más de 50 de estructura, 50 de lámina, etc. Lo que sobra en un hito ya no tapa lo que falta en otro.
+
+### Incluye lo de la v1.28
 
 - Actas: las cuentas van con fórmulas de Excel (% anterior, período con enmienda y tope, equivalente a cobrar, cantidad y % pendiente, total y su %). Los datos de Ctrl-P (contractual, % del hito, anterior, período, enmienda) quedan como valores, así podés revisar o ajustar en Excel y todo se recalcula.
 

@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.4.6"
+VERSION_INTERNA = "1.4.7"
 
 CAMBIOS = [
+    ("1.4.7", [
+        "Informes con «Solo lo contractual» topa por hito: si lo contractual son 50 M2, no se cobran más de 50 de estructura, 50 de lámina, etc. Igual que en la computadora.",
+    ]),
     ("1.4.6", [
         "Tablas (Informes, Presupuesto y otras): ahora se deslizan de lado con el dedo para ver las columnas de la derecha. Antes el gesto horizontal no hacía nada.",
     ]),
