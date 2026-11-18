@@ -25,7 +25,7 @@ import openpyxl
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
 from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import Alignment
+from openpyxl.styles import Alignment, Border, Side
 from openpyxl.worksheet.cell_range import CellRange
 from openpyxl.worksheet.properties import PageSetupProperties
 import datetime as dt
@@ -308,9 +308,48 @@ def armar_hoja(ws, pos, it, ubic, tipo, cont, filas, registro, fecha, enmienda, 
             else:
                 continue
             break
+    # borde parejo en toda la tabla (título, encabezados, filas y total)
+    fino = Side(style="thin", color="000000")
+    b = Border(left=fino, right=fino, top=fino, bottom=fino)
+    for r in range(pos["fila_titulo"], tot + 1):
+        for c in range(c0, c0 + ncols):
+            ws.cell(r, c).border = b
+    _centrar_firmas(ws, c0, c0 + ncols - 1, pos["fila_titulo"])
     ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
     ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
     return total
+
+
+def _px_col(ws, c):
+    w = ws.column_dimensions[openpyxl.utils.get_column_letter(c)].width
+    return int((w if w else 8.43) * 7 + 5)
+
+
+def _centrar_firmas(ws, c_ini, c_fin, fila_desde):
+    """Las imágenes anchas de firmas (las que van debajo de la tabla de verificación y de la de detalle) quedan
+    centradas en el ancho del formato."""
+    EMU = 9525
+    ancho_total = sum(_px_col(ws, c) for c in range(c_ini, c_fin + 1))
+    for im in ws._images:
+        a = im.anchor
+        ext = getattr(a, "ext", None)
+        if ext is None or not getattr(ext, "width", None):
+            continue
+        w_px, h_px = ext.width / EMU, ext.height / EMU
+        if w_px < ancho_total * 0.5 or a._from.row < 10:        # solo las firmas (anchas y no del encabezado)
+            continue
+        if w_px > ancho_total * 0.96:                           # que no se salga del ancho de la tabla
+            f = ancho_total * 0.96 / w_px
+            w_px, h_px = w_px * f, h_px * f
+        im.width, im.height = w_px, h_px                        # mismo tamaño para Excel y para otros visores
+        ext.width, ext.height = int(w_px * EMU), int(h_px * EMU)
+        izq = max(0, (ancho_total - w_px) / 2)
+        c, x = c_ini, 0
+        while c <= c_fin and x + _px_col(ws, c) <= izq:
+            x += _px_col(ws, c)
+            c += 1
+        a._from.col = c - 1                                    # 0-based
+        a._from.colOff = int((izq - x) * EMU)
 
 
 def _imagenes(hoja):
@@ -327,7 +366,11 @@ def _imagenes(hoja):
 def _copiar_imagenes(imagenes, destino):
     for im, datos in imagenes:
         n = XLImage(io.BytesIO(datos))
-        n.width, n.height = im.width, im.height
+        ext = getattr(im.anchor, "ext", None)
+        if ext is not None and getattr(ext, "width", None):     # el tamaño con que se ve en el formato
+            n.width, n.height = ext.width / 9525, ext.height / 9525
+        else:
+            n.width, n.height = im.width, im.height
         n.anchor = copy.deepcopy(im.anchor)
         destino.add_image(n)
 

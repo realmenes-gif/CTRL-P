@@ -1,4 +1,9 @@
-## Ctrl-P v1.29 (Windows)
+## Ctrl-P v1.30 (Windows)
+
+- Actas: borde fino y parejo en toda la tabla de detalle (título, encabezados, filas y total), y las imágenes de firmas centradas en el ancho del formato, sin salirse de la tabla.
+- Pantalla de ingreso: abajo está «Tamaño de letra y controles» (90 % a 200 %). Al elegir uno, Ctrl-P se vuelve a abrir con ese tamaño desde el ingreso; es el mismo ajuste de Apariencia.
+
+### Incluye lo de la v1.29
 
 - «Solo lo contractual» (Informes, Exportar, corte y memorias) y el monto cobrable de Registro topan por hito, igual que las actas: si lo contractual son 50 M2, no se cobran más de 50 de estructura, 50 de lámina, etc. Lo que sobra en un hito ya no tapa lo que falta en otro.
 

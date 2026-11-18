@@ -32,12 +32,16 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.29"
-VERSION_INTERNA = "1.29"
+VERSION = "v1.30"
+VERSION_INTERNA = "1.30"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.30", [
+        "Actas: borde fino y parejo en toda la tabla de detalle (título, encabezados, filas y total), y las imágenes de firmas centradas en el ancho del formato, sin salirse de la tabla.",
+        "Pantalla de ingreso: abajo está «Tamaño de letra y controles» (90 % a 200 %). Al elegir uno, Ctrl-P se vuelve a abrir con ese tamaño desde el ingreso; es el mismo ajuste de Apariencia.",
+    ]),
     ("v1.29", [
         "«Solo lo contractual» (Informes, Exportar, corte y memorias) y el monto cobrable de Registro topan por hito, igual que las actas: si lo contractual son 50 M2, no se cobran más de 50 de estructura, 50 de lámina, etc. Lo que sobra en un hito ya no tapa lo que falta en otro.",
     ]),
@@ -1195,9 +1199,24 @@ class Login(ctk.CTkFrame):
         ctk.CTkButton(f, text="Crear usuario con contraseña", font=F(12), fg_color="transparent",
                       hover_color=C["suave"], text_color=C["acento"], height=28, width=10,
                       command=self.crear_usuario).pack(pady=(0, 24))
+        # tamaño de letra y controles desde la pantalla de ingreso (monitor grande, televisor, proyector)
+        tz = ctk.CTkFrame(der, fg_color="transparent")
+        tz.grid(row=1, column=0, pady=(0, 26))
+        etiqueta(tz, "Tamaño de letra y controles", 12, "bold", "texto2").pack(side="left", padx=(0, 10))
+        zs = PaginaApariencia.ZOOMS
+        self.v_zoom = tk.StringVar(value=PaginaApariencia._txt_zoom(
+            min(zs, key=lambda z: abs(z - float(app.cfg.get("zoom", 1.0) or 1.0)))))
+        ui.segmentado(tz, [PaginaApariencia._txt_zoom(z) for z in zs], self.v_zoom, 70 * len(zs),
+                      cmd=self._zoom).pack(side="left")
         for v in (self.v_nom, self.v_emp):
             v.trace_add("write", lambda *_: self.actualizar())
         self.actualizar()
+
+    def _zoom(self, v):
+        z = next((x for x in PaginaApariencia.ZOOMS if PaginaApariencia._txt_zoom(x) == v), 1.0)
+        self.app.cfg = core.config_poner(zoom=z)
+        if abs(z - ui.ZOOM) > 1e-3:
+            self.app.reiniciar()          # sin proyecto abierto: se vuelve a abrir al instante con el tamaño nuevo
 
     def actualizar(self):
         n, e = core.mayus(self.v_nom.get()), core.mayus(self.v_emp.get())
