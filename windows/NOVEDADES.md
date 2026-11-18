@@ -1,4 +1,8 @@
-## Ctrl-P v1.30 (Windows)
+## Ctrl-P v1.31 (Windows)
+
+- Pantalla de ingreso: si hay una versión nueva de Ctrl-P, el aviso (Ver cambios · Actualizar · Más tarde) ya sale ahí, sin tener que entrar. Si la descarga empieza en el ingreso, sigue al entrar.
+
+### Incluye lo de la v1.30
 
 - Actas: borde fino y parejo en toda la tabla de detalle (título, encabezados, filas y total), y las imágenes de firmas centradas en el ancho del formato, sin salirse de la tabla.
 - Pantalla de ingreso: abajo está «Tamaño de letra y controles» (90 % a 200 %). Al elegir uno, Ctrl-P se vuelve a abrir con ese tamaño desde el ingreso; es el mismo ajuste de Apariencia.

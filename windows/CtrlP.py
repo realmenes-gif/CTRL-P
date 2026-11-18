@@ -32,12 +32,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.30"
-VERSION_INTERNA = "1.30"
+VERSION = "v1.31"
+VERSION_INTERNA = "1.31"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.31", [
+        "Pantalla de ingreso: si hay una versión nueva de Ctrl-P, el aviso (Ver cambios · Actualizar · Más tarde) ya sale ahí, sin tener que entrar. Si la descarga empieza en el ingreso, sigue al entrar.",
+    ]),
     ("v1.30", [
         "Actas: borde fino y parejo en toda la tabla de detalle (título, encabezados, filas y total), y las imágenes de firmas centradas en el ancho del formato, sin salirse de la tabla.",
         "Pantalla de ingreso: abajo está «Tamaño de letra y controles» (90 % a 200 %). Al elegir uno, Ctrl-P se vuelve a abrir con ese tamaño desde el ingreso; es el mismo ajuste de Apariencia.",
@@ -295,6 +298,10 @@ class App(ctk.CTk):
                 w.destroy()
         self.login = Login(self)
         self.login.pack(fill="both", expand=True)
+        self._armar_franja(self.login.der)              # el aviso de versión nueva también sale en el ingreso
+        if not getattr(self, "_act_revisado", False):
+            self._act_revisado = True
+            self.after(2000, lambda: self.buscar_actualizacion(False))  # si no hay internet, no molesta
 
     def entrar(self, usuario):
         self.usuario = usuario
@@ -708,16 +715,29 @@ class App(ctk.CTk):
         self.dibujar_lateral()
 
     # ------------------------------------------------------------ actualizaciones (igual que PdFOL)
-    def _armar_franja(self):
-        self.act = {"info": None, "nuevo": None, "tmp": None, "bajando": False, "cancelar": threading.Event(),
-                    "cola": queue.Queue()}
-        self.franja = ctk.CTkFrame(self.contenido, fg_color=("#E3EDFB", "#22324A"), corner_radius=0, height=46)
+    def _armar_franja(self, padre=None):
+        """Franja de avisos de actualización. Se arma en la pantalla de ingreso y otra vez al entrar; lo que ya
+        se sabía (versión nueva, descarga en curso o lista) sigue igual."""
+        if not hasattr(self, "act"):
+            self.act = {"info": None, "nuevo": None, "tmp": None, "bajando": False, "cancelar": threading.Event(),
+                        "cola": queue.Queue(), "oculta": False}
+        self.franja = ctk.CTkFrame(padre or self.contenido, fg_color=("#E3EDFB", "#22324A"), corner_radius=0, height=46)
         self.franja.grid_columnconfigure(0, weight=1)
         self.v_franja = tk.StringVar(value="")
         ctk.CTkLabel(self.franja, textvariable=self.v_franja, font=F(13, "bold"), text_color=C["texto"],
                      anchor="w", justify="left", wraplength=700).grid(row=0, column=0, sticky="ew", padx=(22, 10), pady=6)
         self.caja_franja = ctk.CTkFrame(self.franja, fg_color="transparent")
         self.caja_franja.grid(row=0, column=1, sticky="e", padx=(0, 18), pady=5)
+        a = self.act
+        if a["nuevo"]:
+            self._franja_mostrar(f"Ctrl-P {a['info']['tag']} está descargado y comprobado (SHA256): listo para instalarse.",
+                                 [("Reiniciar ahora", self.reiniciar_para_actualizar, True),
+                                  ("Después", self._franja_ocultar, False)])
+        elif a["bajando"]:
+            self._franja_mostrar(f"Descargando Ctrl-P {a['info']['tag']}…",
+                                 [("Cancelar", lambda: self.act["cancelar"].set(), False)])
+        elif a["info"] and not a.get("oculta"):
+            self.ofrecer_version(a["info"])
 
     def _franja_mostrar(self, texto, botones):
         self.v_franja.set(texto)
@@ -729,6 +749,7 @@ class App(ctk.CTk):
         self.franja.grid(row=0, column=0, sticky="ew")
 
     def _franja_ocultar(self):
+        self.act["oculta"] = True
         self.franja.grid_forget()
 
     def buscar_actualizacion(self, manual=False):
@@ -786,7 +807,8 @@ class App(ctk.CTk):
 
     def ofrecer_version(self, info):
         self.act["info"] = info
-        self.dibujar_lateral()
+        if getattr(self, "paginas", None):             # en la pantalla de ingreso todavía no hay menú lateral
+            self.dibujar_lateral()
         self._franja_mostrar(f"Hay una versión nueva de Ctrl-P ({info['tag']}).",
                              [("Ver cambios", self.ver_cambios, False), ("Actualizar", self.empezar_actualizacion, True),
                               ("Más tarde", self._franja_ocultar, False)])
@@ -1164,10 +1186,11 @@ class Login(ctk.CTkFrame):
                     w.bind("<Button-1>", lambda _, ruta=r["ruta"]: self.entrar(ruta))
         der = ctk.CTkFrame(self, fg_color="transparent")
         der.grid(row=0, column=1, sticky="nsew")
-        der.grid_rowconfigure(0, weight=1)
+        der.grid_rowconfigure(1, weight=1)
         der.grid_columnconfigure(0, weight=1)
+        self.der = der                                  # fila 0: aviso de actualización
         f = ctk.CTkFrame(der, fg_color=C["tarjeta"], corner_radius=16, border_width=1, border_color=C["borde"])
-        f.grid(row=0, column=0)
+        f.grid(row=1, column=0)
         cab_f = ctk.CTkFrame(f, fg_color="transparent")
         cab_f.pack(fill="x", padx=34, pady=(30, 2))
         etiqueta(cab_f, "Ingresar", 22, "bold").pack(side="left")
@@ -1201,7 +1224,7 @@ class Login(ctk.CTkFrame):
                       command=self.crear_usuario).pack(pady=(0, 24))
         # tamaño de letra y controles desde la pantalla de ingreso (monitor grande, televisor, proyector)
         tz = ctk.CTkFrame(der, fg_color="transparent")
-        tz.grid(row=1, column=0, pady=(0, 26))
+        tz.grid(row=2, column=0, pady=(0, 26))
         etiqueta(tz, "Tamaño de letra y controles", 12, "bold", "texto2").pack(side="left", padx=(0, 10))
         zs = PaginaApariencia.ZOOMS
         self.v_zoom = tk.StringVar(value=PaginaApariencia._txt_zoom(
