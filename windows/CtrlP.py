@@ -32,12 +32,16 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.26"
-VERSION_INTERNA = "1.26"
+VERSION = "v1.27"
+VERSION_INTERNA = "1.27"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.27", [
+        "Informes › «Generar actas»: con el formato Excel de la actividad (por ejemplo, el formulario de liberación de Tabiquería) saca un acta por edificio, nivel y tipo, todas en un libro (una hoja por acta). Eliges el formato, el corte anterior, el período, la fecha del acta, el primer número de registro y la enmienda; cada hito muestra lo contractual, el anterior (cantidad y %), lo del período, la enmienda con tope en lo contractual, el equivalente a cobrar y lo pendiente. Ctrl-P recuerda el último corte y el último número.",
+        "Proyecto › «Formatos de actas»: cargas el Excel de cada actividad y eliges sus partidas, el código del registro, la enmienda y la nota de observaciones. El formato queda guardado dentro del proyecto.",
+    ]),
     ("v1.26", [
         "Informes, Exportar y Memorias: con «Solo lo contractual» apagado, el excedente (lo ejecutado por encima de lo contractual) ahora sí suma en los montos del período y acumulados. Encendido, siguen siendo solo los montos cobrables. El excedente se sigue mostrando aparte.",
     ]),
@@ -1379,6 +1383,12 @@ class PaginaProyecto(Pagina):
         if p.solo_agregar:
             b.configure(state="disabled")
         t.fila("Presupuesto nuevo", b, "Se vinculan las partidas para no perder avances ni contractuales.")
+        nf = len(p.formatos_acta())
+        b = boton(t, "Formatos…", ancho=120, command=lambda: VentanaFormatosActas(self.app))
+        if p.solo_agregar:
+            b.configure(state="disabled")
+        t.fila("Formatos de actas", b, (f"{nf} formato{'s' if nf != 1 else ''} cargado{'s' if nf != 1 else ''}. "
+                                        if nf else "") + "El Excel de cada actividad para «Generar actas» en Informes.")
         # intercambio
         t2 = ui.Tarjeta(self.scroll)
         t2.ancho_ayuda = 260
@@ -3914,6 +3924,7 @@ class PaginaInformes(Pagina):
         super().__init__(master, app)
         bot = ctk.CTkFrame(self.cab, fg_color="transparent")
         bot.grid(row=0, column=1, rowspan=2, sticky="e")
+        boton(bot, "Generar actas", ancho=140, command=self.actas).pack(side="left", padx=(0, 8))
         boton(bot, "Corte de estimación", ancho=170, command=self.exportar_corte).pack(side="left", padx=(0, 8))
         boton(bot, "Memorias de cálculo", ancho=170, command=self.memorias).pack(side="left", padx=(0, 8))
         boton(bot, "Exportar a Excel", primario=True, ancho=160, command=self.exportar).pack(side="left")
@@ -4692,6 +4703,26 @@ class PaginaInformes(Pagina):
         dlg.cerrar()
         if ui.preguntar(self.app, "Memorias de cálculo", f"Se guardó:\n{ruta}", si="Abrir", no="Cerrar"):
             abrir_en_sistema(ruta)
+
+    def actas(self):
+        """Actas (formularios de liberación) con el formato cargado para la actividad: una por edificio, nivel y tipo."""
+        if not self.p:
+            return
+        try:
+            modo, desde, hasta = self._rango()
+        except core.ErrorCtrlP as e:
+            ui.info(self.app, "Generar actas", str(e))
+            return
+        if not self.p.formatos_acta():
+            if not ui.preguntar(self.app, "Generar actas",
+                                "Todavía no hay formatos de actas en este proyecto.\n\nCargá el Excel del formato "
+                                "(por ejemplo, el de Tabiquería) y elegí a qué partidas corresponde.",
+                                si="Cargar formato", no="Cerrar"):
+                return
+            VentanaFormatosActas(self.app, nuevo=True)
+            if not self.p.formatos_acta():
+                return
+        DialogoActas(self.app, desde if modo == "periodo" else hasta, hasta)
 
     def _elegir_memorias(self, titulo, texto, lista, botones, primario):
         """Lista para marcar las memorias que se sacan. Lo desmarcado se recuerda mientras Ctrl-P está abierto."""
@@ -7471,6 +7502,362 @@ class DialogoImportacion(Ventana):
         self.destroy()
         self.app.proyecto_cargado()
         ui.info(self.app, "Importación aplicada", "Los cambios recibidos se incorporaron al proyecto.")
+
+
+def _dia_antes(iso):
+    import datetime as _dt
+    return (_dt.date.fromisoformat(iso) - _dt.timedelta(days=1)).isoformat()
+
+
+class DialogoActas(Ventana):
+    """Informes › Generar actas: formato, corte anterior, fin del período, fecha del acta, numeración y enmienda;
+    la lista de actas posibles (edificio, nivel y tipo con avance en el período) se marca con un clic."""
+
+    SI, NO = "☑", "☐"
+
+    def __init__(self, app, desde, hasta):
+        super().__init__(app, "Generar actas", 980, 720)
+        import ctrlp_actas as actas_
+        self.A = actas_
+        self.p = app.p
+        self.desde, self.hasta = desde, hasta
+        self.lista, self.marcadas = [], set()
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(3, weight=1)
+        etiqueta(self, "Generar actas", 20, "bold").grid(row=0, column=0, sticky="w", padx=28, pady=(20, 4))
+        etiqueta(self, "Un acta por edificio, nivel y tipo, con lo registrado después del corte anterior y hasta el fin "
+                       "del período. Todas salen en un libro de Excel, una hoja por acta.", 12, color="texto2",
+                 justify="left", wraplength=900).grid(row=1, column=0, sticky="w", padx=28)
+        f = ctk.CTkFrame(self, fg_color="transparent")
+        f.grid(row=2, column=0, sticky="ew", padx=28, pady=(14, 8))
+        self.formatos = self.p.formatos_acta()
+        self.v_formato = tk.StringVar(value=self.formatos[0]["nombre"])
+        self.v_corte = tk.StringVar()
+        self.v_fecha_modo = tk.StringVar(value="Fin del período")
+        self.v_fecha = tk.StringVar(value=core.fecha_txt(hasta))
+        self.v_num = tk.StringVar()
+        self.v_enm = tk.StringVar()
+        self.v_pref = tk.StringVar()
+
+        def fila(r, texto):
+            etiqueta(f, texto, 12, "bold").grid(row=r, column=0, sticky="w", pady=4, padx=(0, 14))
+            c = ctk.CTkFrame(f, fg_color="transparent")
+            c.grid(row=r, column=1, sticky="w", pady=4)
+            return c
+        c = fila(0, "Formato")
+        self.m_formato = ui.menu(c, [x["nombre"] for x in self.formatos], self.v_formato, 300,
+                                 cmd=lambda _: self._formato())
+        self.m_formato.pack(side="left")
+        boton(c, "Formatos…", ancho=110, command=self._admin).pack(side="left", padx=8)
+        self.v_items = tk.StringVar()
+        etiqueta(c, "", 12, color="texto2", textvariable=self.v_items).pack(side="left", padx=6)
+        c = fila(1, "Corte anterior")
+        e = entrada(c, self.v_corte, 120, justify="center")
+        e.pack(side="left")
+        e.bind("<Return>", lambda _: self._cargar())
+        e.bind("<FocusOut>", lambda _: self._cargar())
+        etiqueta(c, "lo registrado hasta esta fecha (incluida) es el acumulado anterior", 12,
+                 color="texto2").pack(side="left", padx=10)
+        c = fila(2, "Este período")
+        self.v_periodo = tk.StringVar()
+        etiqueta(c, "", 13, textvariable=self.v_periodo).pack(side="left")
+        c = fila(3, "Fecha del acta")
+        ui.segmentado(c, ["Fin del período", "Otra fecha"], self.v_fecha_modo, 240,
+                      cmd=lambda _: self._modo_fecha()).pack(side="left")
+        self.e_fecha = entrada(c, self.v_fecha, 120, justify="center")
+        self.e_fecha.pack(side="left", padx=10)
+        c = fila(4, "Primer registro")
+        etiqueta(c, "", 13, textvariable=self.v_pref).pack(side="left")
+        entrada(c, self.v_num, 70, justify="center").pack(side="left", padx=(4, 10))
+        etiqueta(c, "los siguientes siguen el consecutivo", 12, color="texto2").pack(side="left")
+        c = fila(5, "Enmienda (%)")
+        entrada(c, self.v_enm, 70, justify="center").pack(side="left")
+        etiqueta(c, "se aplica a lo del período, sin pasar lo contractual de cada hito", 12,
+                 color="texto2").pack(side="left", padx=10)
+        barra = ctk.CTkFrame(f, fg_color="transparent")
+        barra.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        boton(barra, "Marcar todas", ancho=120, command=lambda: self._poner(True)).pack(side="left")
+        boton(barra, "Desmarcar todas", ancho=130, command=lambda: self._poner(False)).pack(side="left", padx=8)
+        cols = [("ok", "", 46, "center"), ("ubic", "Ubicación", 200, "w"), ("tipo", "Tipo", 220, "w"),
+                ("partida", "Partida", 110, "w"), ("desc", "Actividad", 320, "w")]
+        marco, self.tv = ui.tabla(self, cols, arbol=False)
+        marco.grid(row=3, column=0, sticky="nsew", padx=28)
+        self.tv.configure(selectmode="none")
+        self.tv.bind("<Button-1>", self._clic)
+        pie = ctk.CTkFrame(self, fg_color=C["tarjeta"], corner_radius=0)
+        pie.grid(row=4, column=0, sticky="ew", pady=(14, 0))
+        self.v_cuenta = tk.StringVar()
+        etiqueta(pie, "", 13, "bold", textvariable=self.v_cuenta).pack(side="left", padx=28, pady=16)
+        boton(pie, "Generar", primario=True, ancho=130, command=self._generar).pack(side="right", padx=(8, 28), pady=16)
+        boton(pie, "Cancelar", ancho=110, command=self.destroy).pack(side="right", pady=16)
+        self.bind("<Escape>", lambda _: self.destroy())
+        self._formato()
+
+    def _fmt_actual(self):
+        return next((x for x in self.formatos if x["nombre"] == self.v_formato.get()), self.formatos[0])
+
+    def _formato(self):
+        fo = self._fmt_actual()
+        cods = [self.p.item(i)["codigo"] for i in fo["items"] if self.p.item(i)]
+        self.v_items.set("Partidas: " + (", ".join(cods) if cods else "ninguna (editala en «Formatos…»)"))
+        corte = fo.get("ultimo_corte") or _dia_antes(self.desde)
+        if corte >= self.hasta:
+            corte = _dia_antes(self.desde)
+        self.v_corte.set(core.fecha_txt(corte))
+        self.v_pref.set(fo.get("prefijo") or "")
+        self.v_num.set(str((fo.get("ultimo_num") or 0) + 1))
+        self.v_enm.set(ui.txt_num(round((fo.get("enmienda") if fo.get("enmienda") is not None else 1.0) * 100, 4)))
+        self._modo_fecha()
+        self._cargar()
+
+    def _modo_fecha(self):
+        if self.v_fecha_modo.get() == "Fin del período":
+            self.v_fecha.set(core.fecha_txt(self.hasta))
+            self.e_fecha.configure(state="disabled")
+        else:
+            self.e_fecha.configure(state="normal")
+
+    def _corte(self):
+        return core.txt_a_iso(self.v_corte.get())
+
+    def _cargar(self):
+        try:
+            corte = self._corte()
+        except core.ErrorCtrlP:
+            self.v_periodo.set("Revisá la fecha del corte anterior (dd/mm/aaaa).")
+            return
+        if corte >= self.hasta:
+            self.v_periodo.set("El corte anterior tiene que ser antes del fin del período "
+                               f"({core.fecha_txt(self.hasta)}).")
+            self.lista = []
+        else:
+            self.v_periodo.set(f"del {core.fecha_txt(_dia_antes_inv(corte))} al {core.fecha_txt(self.hasta)}")
+            self.lista = self.A.actas_posibles(self.p, self._fmt_actual()["items"], corte, self.hasta)
+        clave = lambda a: (a[0]["id"], a[1], a[2] or "")
+        self.marcadas = {clave(a) for a in self.lista}
+        self._clave = clave
+        self.tv.delete(*self.tv.get_children())
+        for k, (it, n, t) in enumerate(self.lista):
+            self.tv.insert("", "end", iid=str(k), values=(self.SI, self.p.etiqueta_ubicacion(n), t or "—",
+                                                          it["codigo"], it["descripcion"]))
+        self._contar()
+
+    def _contar(self):
+        n = len(self.marcadas)
+        self.v_cuenta.set(f"{n} de {len(self.lista)} actas marcadas" if self.lista else
+                          "No hay avance de estas partidas en el período elegido")
+
+    def _clic(self, ev):
+        fila = self.tv.identify_row(ev.y)
+        if not fila:
+            return "break"
+        a = self.lista[int(fila)]
+        k = self._clave(a)
+        if k in self.marcadas:
+            self.marcadas.discard(k)
+        else:
+            self.marcadas.add(k)
+        self.tv.set(fila, "ok", self.SI if k in self.marcadas else self.NO)
+        self._contar()
+        return "break"
+
+    def _poner(self, si):
+        self.marcadas = {self._clave(a) for a in self.lista} if si else set()
+        for k in range(len(self.lista)):
+            self.tv.set(str(k), "ok", self.SI if si else self.NO)
+        self._contar()
+
+    def _admin(self):
+        VentanaFormatosActas(self.app)
+        self.formatos = self.p.formatos_acta()
+        if not self.formatos:
+            self.destroy()
+            return
+        self.m_formato.configure(values=[x["nombre"] for x in self.formatos])
+        if self.v_formato.get() not in [x["nombre"] for x in self.formatos]:
+            self.v_formato.set(self.formatos[0]["nombre"])
+        self._formato()
+
+    def _generar(self):
+        try:
+            corte = self._corte()
+            fecha = core.txt_a_iso(self.v_fecha.get())
+        except core.ErrorCtrlP as e:
+            ui.info(self, "Generar actas", str(e))
+            return
+        num = ui.leer_num(self.v_num.get())
+        enm = ui.leer_num(self.v_enm.get())
+        if not isinstance(num, float) or num < 1 or not isinstance(enm, float) or not 0 < enm <= 100:
+            ui.info(self, "Generar actas", "Revisá el número del primer registro (1 o más) y la enmienda (entre 0 y 100 %).")
+            return
+        sel = [a for a in self.lista if self._clave(a) in self.marcadas]
+        if not sel:
+            ui.info(self, "Generar actas", "Marcá al menos un acta.")
+            return
+        fo = self._fmt_actual()
+        base = os.path.splitext(os.path.basename(self.p.ruta))[0]
+        ruta = filedialog.asksaveasfilename(parent=self, title="Generar actas", defaultextension=".xlsx",
+                                            initialfile=f"{base} - Actas {fo['nombre']} al {self.hasta}.xlsx",
+                                            initialdir=ui.carpeta_docs(), filetypes=[("Excel", "*.xlsx")])
+        if not ruta:
+            return
+        dlg = DialogoProgreso(self.app, "Generar actas", "Preparando las actas…")
+        try:
+            hechas, ultimo = self.A.generar(self.p, fo, sel, corte, self.hasta, fecha, int(num), enm / 100, ruta,
+                                            progreso=lambda x, t="": dlg.avanzar(x, t))
+        except PermissionError:
+            dlg.cerrar()
+            ui.info(self, "Generar actas", "No se pudo guardar: el archivo está abierto en Excel. Cerralo y volvé a intentar.")
+            return
+        except self.A.ErrorActa as e:
+            dlg.cerrar()
+            ui.info(self, "Generar actas", str(e))
+            return
+        except Exception:
+            dlg.cerrar()
+            raise
+        dlg.cerrar()
+        self.p.marcar_actas_generadas(fo["id"], self.hasta, ultimo)
+        self.destroy()
+        if ui.preguntar(self.app, "Actas generadas",
+                        f"Se generaron {len(hechas)} actas ({hechas[0][0]} a {hechas[-1][0]}).\n{ruta}\n\n"
+                        f"La próxima vez el corte anterior propuesto será el {core.fecha_txt(self.hasta)} y el registro "
+                        f"seguirá en el {ultimo + 1}. Guardá el proyecto para que lo recuerde.", si="Abrir", no="Cerrar"):
+            abrir_en_sistema(ruta)
+
+
+def _dia_antes_inv(iso):
+    import datetime as _dt
+    return (_dt.date.fromisoformat(iso) + _dt.timedelta(days=1)).isoformat()
+
+
+class VentanaFormatosActas(Ventana):
+    """Formatos de actas del proyecto: el Excel de cada actividad, a qué partidas corresponde, el código del
+    registro, la enmienda y la nota de observaciones."""
+
+    def __init__(self, app, nuevo=False):
+        super().__init__(app, "Formatos de actas", 900, 520)
+        self.p = app.p
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(2, weight=1)
+        etiqueta(self, "Formatos de actas", 20, "bold").grid(row=0, column=0, sticky="w", padx=28, pady=(20, 4))
+        etiqueta(self, "El Excel se guarda dentro del proyecto. Ctrl-P llena la fecha, el registro, la actividad, la "
+                       "ubicación, la tabla «Detalle de levantamiento de obra ejecutada» y la nota de observaciones; lo "
+                       "demás queda como en tu formato.", 12, color="texto2", justify="left",
+                 wraplength=840).grid(row=1, column=0, sticky="w", padx=28, pady=(0, 10))
+        cols = [("nombre", "Formato", 200, "w"), ("partidas", "Partidas", 180, "w"), ("prefijo", "Registro", 120, "w"),
+                ("enm", "Enmienda", 90, "e"), ("archivo", "Archivo", 300, "w")]
+        marco, self.tv = ui.tabla(self, cols, arbol=False)
+        marco.grid(row=2, column=0, sticky="nsew", padx=28)
+        self.tv.bind("<Double-1>", lambda _: self._editar())
+        pie = ctk.CTkFrame(self, fg_color=C["tarjeta"], corner_radius=0)
+        pie.grid(row=3, column=0, sticky="ew", pady=(14, 0))
+        boton(pie, "Cargar formato", primario=True, ancho=140, command=self._nuevo).pack(side="left", padx=(28, 8), pady=16)
+        boton(pie, "Editar", ancho=100, command=self._editar).pack(side="left", padx=(0, 8))
+        boton(pie, "Cambiar Excel", ancho=130, command=self._cambiar_excel).pack(side="left", padx=(0, 8))
+        boton(pie, "Eliminar", ancho=100, command=self._borrar).pack(side="left")
+        boton(pie, "Cerrar", ancho=100, command=self.destroy).pack(side="right", padx=28)
+        self.bind("<Escape>", lambda _: self.destroy())
+        self._cargar()
+        if nuevo:
+            self.after(250, self._nuevo)
+        self.wait_window(self)
+
+    def _cargar(self):
+        self.tv.delete(*self.tv.get_children())
+        for fo in self.p.formatos_acta():
+            cods = [self.p.item(i)["codigo"] for i in fo["items"] if self.p.item(i)]
+            enm = fo.get("enmienda")
+            self.tv.insert("", "end", iid=fo["id"], values=(
+                fo["nombre"], ", ".join(cods) or "—", f"{fo.get('prefijo') or ''}###",
+                "—" if enm is None else f"{enm * 100:g} %", fo.get("archivo") or ""))
+
+    def _sel(self):
+        s = self.tv.selection()
+        if not s:
+            ui.info(self, "Formatos de actas", "Elegí un formato de la lista.")
+            return None
+        return next((x for x in self.p.formatos_acta() if x["id"] == s[0]), None)
+
+    def _leer_excel(self):
+        ruta = filedialog.askopenfilename(parent=self, title="Formato del acta (Excel)",
+                                          filetypes=[("Excel", "*.xlsx *.xlsm")], initialdir=ui.carpeta_docs())
+        if not ruta:
+            return None
+        import io
+        import openpyxl
+        import ctrlp_actas as actas_
+        datos = open(ruta, "rb").read()
+        try:
+            actas_.leer_formato(openpyxl.load_workbook(io.BytesIO(datos)).worksheets[0])
+        except actas_.ErrorActa as e:
+            ui.info(self, "Formato del acta", str(e))
+            return None
+        except Exception as e:
+            ui.info(self, "Formato del acta", f"No se pudo leer el Excel: {e}")
+            return None
+        return os.path.basename(ruta), datos
+
+    def _form(self, fo):
+        cods = ", ".join(self.p.item(i)["codigo"] for i in (fo or {}).get("items", []) if self.p.item(i))
+        enm = (fo or {}).get("enmienda")
+        por_cod = {it["codigo"]: it for it in self.p.partidas()}
+
+        def validar(v):
+            faltan = [c for c in [x.strip() for x in v["partidas"].replace(";", ",").split(",")] if c and c not in por_cod]
+            if not v["partidas"].strip():
+                return "Escribí al menos el código de una partida (por ejemplo 06.03)."
+            if faltan:
+                return "No existen en el presupuesto: " + ", ".join(faltan)
+            n = ui.leer_num(v["enm"])
+            if not isinstance(n, float) or not 0 < n <= 100:
+                return "La enmienda va entre 0 y 100 % (100 = sin enmienda)."
+            return ""
+        v = ui.dialogo_form(self, "Formato de acta", "Las partidas van por código, separadas por coma.", [
+            ("nombre", "Nombre del formato", False, (fo or {}).get("nombre", "Tabiquería")),
+            ("partidas", "Partidas (códigos)", False, cods),
+            ("prefijo", "Código del registro (antes del número)", False, (fo or {}).get("prefijo", "CD-TAB-")),
+            ("enm", "Enmienda (%)", False, ui.txt_num(enm * 100) if enm is not None else "40"),
+            ("nota", "Nota en observaciones", False, (fo or {}).get(
+                "nota", "Nota: el 40 % aplicado corresponde a la Enmienda 01 (instalación + aceptación).")),
+        ], validar=validar)
+        if not v:
+            return None
+        items = [por_cod[c.strip()]["id"] for c in v["partidas"].replace(";", ",").split(",") if c.strip()]
+        return v["nombre"], items, v["prefijo"].strip(), ui.leer_num(v["enm"]) / 100, v["nota"].strip()
+
+    def _nuevo(self):
+        x = self._leer_excel()
+        if not x:
+            return
+        f = self._form(None)
+        if not f:
+            return
+        self.p.guardar_formato_acta(None, *f, archivo=x[0], datos=x[1])
+        self._cargar()
+
+    def _editar(self):
+        fo = self._sel()
+        if fo:
+            f = self._form(fo)
+            if f:
+                self.p.guardar_formato_acta(fo["id"], *f)
+                self._cargar()
+
+    def _cambiar_excel(self):
+        fo = self._sel()
+        if fo:
+            x = self._leer_excel()
+            if x:
+                self.p.guardar_formato_acta(fo["id"], fo["nombre"], fo["items"], fo.get("prefijo"), fo.get("enmienda"),
+                                            fo.get("nota"), archivo=x[0], datos=x[1])
+                self._cargar()
+
+    def _borrar(self):
+        fo = self._sel()
+        if fo and ui.preguntar(self, "Formatos de actas", f"¿Eliminar el formato «{fo['nombre']}»?", si="Eliminar"):
+            self.p.borrar_formato_acta(fo["id"])
+            self._cargar()
 
 
 class DialogoMemorias(Ventana):

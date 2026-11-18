@@ -400,6 +400,8 @@ CREATE TABLE IF NOT EXISTS plano_ubic(plano TEXT, nivel TEXT, PRIMARY KEY(plano,
 CREATE TABLE IF NOT EXISTS hojas(id TEXT PRIMARY KEY, plano TEXT, item TEXT, creado TEXT, usuario TEXT,
     UNIQUE(plano, item));
 CREATE TABLE IF NOT EXISTS estilos(item TEXT PRIMARY KEY, datos TEXT);
+CREATE TABLE IF NOT EXISTS actas_formato(id TEXT PRIMARY KEY, nombre TEXT, items TEXT, prefijo TEXT, enmienda REAL,
+    nota TEXT, archivo TEXT, datos BLOB, ultimo_corte TEXT, ultimo_num INTEGER DEFAULT 0, creado TEXT, usuario TEXT);
 CREATE TABLE IF NOT EXISTS historial(
     id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT, fecha TEXT, usuario TEXT, version TEXT,
     que TEXT, actividad TEXT, ubicacion TEXT, anterior TEXT, nuevo TEXT, exportado INTEGER DEFAULT 0);
@@ -1847,6 +1849,57 @@ class Proyecto:
         if not con_datos:
             d.pop("datos", None)
         return d
+
+    # ------------------------------------------------------------------ formatos de actas (Windows)
+    def formatos_acta(self):
+        """Formatos de actas cargados (sin el archivo): items es la lista de ids de partidas."""
+        res = []
+        for r in self.con.execute("SELECT id, nombre, items, prefijo, enmienda, nota, archivo, ultimo_corte, ultimo_num "
+                                  "FROM actas_formato ORDER BY nombre"):
+            d = dict(r)
+            try:
+                d["items"] = json.loads(d["items"] or "[]")
+            except ValueError:
+                d["items"] = []
+            res.append(d)
+        return res
+
+    def formato_acta_datos(self, fid):
+        r = self.con.execute("SELECT datos FROM actas_formato WHERE id=?", (fid,)).fetchone()
+        return bytes(r[0]) if r and r[0] is not None else None
+
+    def guardar_formato_acta(self, fid, nombre, items, prefijo, enmienda, nota, archivo=None, datos=None):
+        nombre = (nombre or "").strip() or "FORMATO"
+        if fid is None:
+            if datos is None:
+                raise ErrorCtrlP("Elegí el archivo Excel del formato.")
+            fid = nuevo_id()
+            self.con.execute("INSERT INTO actas_formato(id,nombre,items,prefijo,enmienda,nota,archivo,datos,ultimo_corte,"
+                             "ultimo_num,creado,usuario) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                             (fid, nombre, json.dumps(list(items)), prefijo, enmienda, nota, archivo,
+                              sqlite3.Binary(datos), "", 0, ahora(), self.usuario))
+            self.registrar("Formato de acta cargado", "", "", "", f"{nombre} ({archivo})")
+        else:
+            self.con.execute("UPDATE actas_formato SET nombre=?, items=?, prefijo=?, enmienda=?, nota=? WHERE id=?",
+                             (nombre, json.dumps(list(items)), prefijo, enmienda, nota, fid))
+            if datos is not None:
+                self.con.execute("UPDATE actas_formato SET archivo=?, datos=? WHERE id=?",
+                                 (archivo, sqlite3.Binary(datos), fid))
+            self.registrar("Formato de acta modificado", "", "", "", nombre)
+        self.sucio = True
+        return fid
+
+    def borrar_formato_acta(self, fid):
+        r = self.con.execute("SELECT nombre FROM actas_formato WHERE id=?", (fid,)).fetchone()
+        self.con.execute("DELETE FROM actas_formato WHERE id=?", (fid,))
+        if r:
+            self.registrar("Formato de acta eliminado", "", "", r[0], "")
+        self.sucio = True
+
+    def marcar_actas_generadas(self, fid, corte, ultimo_num):
+        """Recuerda hasta qué fecha se sacaron actas (próximo corte anterior) y el último número de registro."""
+        self.con.execute("UPDATE actas_formato SET ultimo_corte=?, ultimo_num=? WHERE id=?", (corte, ultimo_num, fid))
+        self.sucio = True
 
     def agregar_plano(self, nivel, nombre, tipo, datos, ancho, alto, alcance="nivel", nombre_alcance=""):
         nombre = (nombre or "").strip() or "PLANO"
