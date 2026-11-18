@@ -32,12 +32,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.32"
-VERSION_INTERNA = "1.32"
+VERSION = "v1.33"
+VERSION_INTERNA = "1.33"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.33", [
+        "Actas: abajo de la tabla ya no va el % (quedaba bajo «% pendiente» y se prestaba a confusión). Solo queda el total a cobrar.",
+    ]),
     ("v1.32", [
         "Actas e Informes: en las partidas con «Suministro cobrado hasta» en su formato de acta (p. ej. Tabiquería al 21/10/2026), lo registrado después vale × el complemento de lo cobrado en cada hito y ubicación (si llevaba 61 %, × 39 %). Lo cobrado + instalado × complemento se compara con lo contractual y lo que pasa queda como no cobrable. Informes y actas dan lo mismo, y el «Anterior» de las próximas actas sale bien.",
         "«Formatos de actas › Editar» tiene el campo nuevo «Suministro cobrado hasta».",

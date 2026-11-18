@@ -297,12 +297,11 @@ def armar_hoja(ws, pos, it, ubic, tipo, cont, filas, registro, fecha, enmienda, 
                 cel.number_format = "0.00%" if c in PCT else "#,##0.00"
     total = round(sum(round(f["cob"], 2) for f in filas), 2)
     ws.merge_cells(start_row=tot, start_column=c0, end_row=tot, end_column=c0 + 10)
-    ws.cell(tot, c0).value = f"TOTAL A COBRAR ({unidad} equivalentes) · % DE LA PARTIDA EN ESTE EDIFICIO Y NIVEL"
+    ws.cell(tot, c0).value = f"TOTAL A COBRAR ({unidad} equivalentes)"
     ws.cell(tot, c0).alignment = CENTRO
     ct = ws.cell(tot, c0 + 11)
     ct.value, ct.number_format, ct.alignment = f"=SUM({M}{f1}:{M}{tot - 1})", "#,##0.00", DER
-    cp = ws.cell(tot, c0 + 13)
-    cp.value, cp.number_format, cp.alignment = f"=IF({F}{f1}>0,{M}{tot}/{F}{f1},0)", "0.00%", DER
+    ws.cell(tot, c0 + 13).value = None          # sin % abajo: quedaba bajo «% pendiente» y confundía
     # nota en Observaciones
     if nota:
         for r in range(tot + 1, tot + 8):

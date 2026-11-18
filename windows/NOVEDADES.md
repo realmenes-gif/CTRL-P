@@ -1,4 +1,8 @@
-## Ctrl-P v1.32 (Windows)
+## Ctrl-P v1.33 (Windows)
+
+- Actas: abajo de la tabla ya no va el % (quedaba bajo «% pendiente» y se prestaba a confusión). Solo queda el total a cobrar.
+
+### Incluye lo de la v1.32
 
 - Actas e Informes: en las partidas con «Suministro cobrado hasta» en su formato de acta (p. ej. Tabiquería al 21/10/2026), lo registrado después vale × el complemento de lo cobrado en cada hito y ubicación (si llevaba 61 %, × 39 %). Lo cobrado + instalado × complemento se compara con lo contractual y lo que pasa queda como no cobrable. Informes y actas dan lo mismo, y el «Anterior» de las próximas actas sale bien.
 - «Formatos de actas › Editar» tiene el campo nuevo «Suministro cobrado hasta».
