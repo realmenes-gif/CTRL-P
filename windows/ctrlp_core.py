@@ -401,7 +401,8 @@ CREATE TABLE IF NOT EXISTS hojas(id TEXT PRIMARY KEY, plano TEXT, item TEXT, cre
     UNIQUE(plano, item));
 CREATE TABLE IF NOT EXISTS estilos(item TEXT PRIMARY KEY, datos TEXT);
 CREATE TABLE IF NOT EXISTS actas_formato(id TEXT PRIMARY KEY, nombre TEXT, items TEXT, prefijo TEXT, enmienda REAL,
-    nota TEXT, archivo TEXT, datos BLOB, ultimo_corte TEXT, ultimo_num INTEGER DEFAULT 0, creado TEXT, usuario TEXT);
+    nota TEXT, archivo TEXT, datos BLOB, ultimo_corte TEXT, ultimo_num INTEGER DEFAULT 0, creado TEXT, usuario TEXT,
+    suministro TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS historial(
     id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT, fecha TEXT, usuario TEXT, version TEXT,
     que TEXT, actividad TEXT, ubicacion TEXT, anterior TEXT, nuevo TEXT, exportado INTEGER DEFAULT 0);
@@ -526,7 +527,7 @@ class Proyecto:
                                  ("marcas", "equipo", "TEXT DEFAULT ''"), ("marcas", "ref", "TEXT DEFAULT ''"),
                                  ("marcas", "visual", "INTEGER DEFAULT 0"), ("planos", "alcance", "TEXT DEFAULT 'nivel'"),
                                  ("planos", "nombre_alcance", "TEXT DEFAULT ''"), ("marcas", "huecos", "TEXT DEFAULT ''"),
-                                 ("hitos", "tipo", "TEXT DEFAULT ''")):
+                                 ("hitos", "tipo", "TEXT DEFAULT ''"), ("actas_formato", "suministro", "TEXT DEFAULT ''")):
             c = cols(tabla)
             if c and col not in c:
                 self.con.execute(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo}")
@@ -1506,12 +1507,71 @@ class Proyecto:
         return [r[0] for r in self.con.execute("SELECT DISTINCT fecha FROM avances WHERE ABS(cantidad)>1e-9 "
                                                "ORDER BY fecha")]          # un 0 no cuenta como avance
 
+    def suministros(self):
+        """{item: fecha} de las partidas cuyo formato de acta tiene «Suministro cobrado hasta»."""
+        res = {}
+        try:
+            filas = self.con.execute("SELECT items, suministro FROM actas_formato "
+                                     "WHERE COALESCE(suministro,'')<>''").fetchall()
+        except sqlite3.Error:
+            return res
+        for r in filas:
+            try:
+                ids = json.loads(r["items"] or "[]")
+            except ValueError:
+                ids = []
+            for iid in ids:
+                res[iid] = r["suministro"]
+        return res
+
+    def factores_suministro(self):
+        """{(item, nivel, hito): (fecha, factor)}. Lo registrado hasta la fecha del suministro es lo ya cobrado
+        como suministro (p. ej. 61 % de lo contractual del hito en esa ubicación); lo registrado después es
+        instalación real y vale cantidad × el complemento (39 %). Así lo cobrado + instalado × complemento se
+        compara con lo contractual y lo que pasa queda como no cobrable."""
+        sumi = self.suministros()
+        res = {}
+        if not sumi:
+            return res
+        cont = None
+        tipos = {}
+        for r in self.con.execute("SELECT item, nivel, tipo, cantidad FROM tipo_cant"):
+            tipos[(r["item"], r["nivel"], r["tipo"])] = r["cantidad"] or 0.0
+        for iid, fs in sumi.items():
+            tipo_h = {r["id"]: r["tipo"] or "" for r in self.con.execute("SELECT id, tipo FROM hitos WHERE item=?", (iid,))}
+            for r in self.con.execute("SELECT nivel, hito, SUM(cantidad) s FROM avances WHERE item=? AND fecha<=? "
+                                      "AND hito<>'' AND equipo='' AND tramo='' GROUP BY nivel, hito", (iid, fs)):
+                if r["hito"] not in tipo_h:
+                    continue
+                t = tipo_h[r["hito"]]
+                base = tipos.get((iid, r["nivel"], t)) if t else None
+                if base is None:
+                    if cont is None:
+                        cont = self.todo_contractual()
+                    base = (cont.get(iid) or {}).get(r["nivel"])
+                if not base or base <= EPS:
+                    continue
+                pc = min(max((r["s"] or 0.0) / base, 0.0), 1.0)
+                res[(iid, r["nivel"], r["hito"])] = (fs, 1.0 - pc)
+        return res
+
+    def _sql_factor(self, a=""):
+        """(expresión SQL, args) del factor por registro según factores_suministro (1 si no aplica)."""
+        f = self.factores_suministro()
+        if not f:
+            return "1.0", []
+        partes, args = [], []
+        for (iid, nv, h), (fs, e) in f.items():
+            partes.append(f"WHEN {a}item=? AND {a}nivel=? AND {a}hito=? AND {a}fecha>? THEN ?")
+            args += [iid, nv, h, fs, e]
+        return "(CASE " + " ".join(partes) + " ELSE 1.0 END)", args
+
     def ejecutado(self, hasta=None, desde=None):
         """{item: {nivel: cantidad equivalente}} entre desde y hasta (incluidas).
         Con hitos, cada cantidad vale su porcentaje (cantidad x % del hito)."""
-        q = ("SELECT a.item, a.nivel, SUM(a.cantidad * COALESCE(h.pct / 100.0, 1.0)) s "
+        fx, args = self._sql_factor("a.")
+        q = (f"SELECT a.item, a.nivel, SUM(a.cantidad * {fx} * COALESCE(h.pct / 100.0, 1.0)) s "
              "FROM avances a LEFT JOIN hitos h ON h.id = a.hito WHERE 1=1")
-        args = []
         if desde:
             q += " AND a.fecha>=?"
             args.append(desde)
@@ -1549,9 +1609,9 @@ class Proyecto:
 
     def ejecutado_desglose(self, hasta=None, desde=None):
         """{item: {(nivel, equipo, tramo): cantidad equivalente}} para aplicar los topes en cadena."""
-        q = ("SELECT a.item, a.nivel, a.equipo, a.tramo, SUM(a.cantidad * COALESCE(h.pct / 100.0, 1.0)) s "
+        fx, args = self._sql_factor("a.")
+        q = (f"SELECT a.item, a.nivel, a.equipo, a.tramo, SUM(a.cantidad * {fx} * COALESCE(h.pct / 100.0, 1.0)) s "
              "FROM avances a LEFT JOIN hitos h ON h.id = a.hito WHERE 1=1")
-        args = []
         if desde:
             q += " AND a.fecha>=?"
             args.append(desde)
@@ -1577,8 +1637,8 @@ class Proyecto:
         tipos = {}
         for r in self.con.execute("SELECT item, nivel, tipo, cantidad FROM tipo_cant"):
             tipos[(r["item"], r["nivel"], r["tipo"])] = r["cantidad"] or 0.0
-        q = "SELECT item, nivel, hito, SUM(cantidad) s FROM avances WHERE hito<>'' AND equipo='' AND tramo=''"
-        args = []
+        fx, args = self._sql_factor()
+        q = f"SELECT item, nivel, hito, SUM(cantidad * {fx}) s FROM avances WHERE hito<>'' AND equipo='' AND tramo=''"
         if hasta:
             q += " AND fecha<=?"
             args.append(hasta)
@@ -1602,8 +1662,10 @@ class Proyecto:
         return dg
 
     def _directo_sin_hito(self, iid, nv, hasta):
-        q = "SELECT SUM(cantidad) FROM avances WHERE item=? AND nivel=? AND (hito='' OR hito IS NULL) AND equipo='' AND tramo=''"
-        args = [iid, nv]
+        fx, args = self._sql_factor()
+        q = (f"SELECT SUM(cantidad * {fx}) FROM avances WHERE item=? AND nivel=? AND (hito='' OR hito IS NULL) "
+             "AND equipo='' AND tramo=''")
+        args += [iid, nv]
         if hasta:
             q += " AND fecha<=?"
             args.append(hasta)
@@ -1900,8 +1962,8 @@ class Proyecto:
     def formatos_acta(self):
         """Formatos de actas cargados (sin el archivo): items es la lista de ids de partidas."""
         res = []
-        for r in self.con.execute("SELECT id, nombre, items, prefijo, enmienda, nota, archivo, ultimo_corte, ultimo_num "
-                                  "FROM actas_formato ORDER BY nombre"):
+        for r in self.con.execute("SELECT id, nombre, items, prefijo, enmienda, nota, archivo, ultimo_corte, ultimo_num, "
+                                  "suministro FROM actas_formato ORDER BY nombre"):
             d = dict(r)
             try:
                 d["items"] = json.loads(d["items"] or "[]")
@@ -1914,7 +1976,7 @@ class Proyecto:
         r = self.con.execute("SELECT datos FROM actas_formato WHERE id=?", (fid,)).fetchone()
         return bytes(r[0]) if r and r[0] is not None else None
 
-    def guardar_formato_acta(self, fid, nombre, items, prefijo, enmienda, nota, archivo=None, datos=None):
+    def guardar_formato_acta(self, fid, nombre, items, prefijo, enmienda, nota, archivo=None, datos=None, suministro=None):
         nombre = (nombre or "").strip() or "FORMATO"
         if fid is None:
             if datos is None:
@@ -1925,9 +1987,13 @@ class Proyecto:
                              (fid, nombre, json.dumps(list(items)), prefijo, enmienda, nota, archivo,
                               sqlite3.Binary(datos), "", 0, ahora(), self.usuario))
             self.registrar("Formato de acta cargado", "", "", "", f"{nombre} ({archivo})")
+            if suministro is not None:
+                self.con.execute("UPDATE actas_formato SET suministro=? WHERE id=?", (suministro, fid))
         else:
             self.con.execute("UPDATE actas_formato SET nombre=?, items=?, prefijo=?, enmienda=?, nota=? WHERE id=?",
                              (nombre, json.dumps(list(items)), prefijo, enmienda, nota, fid))
+            if suministro is not None:
+                self.con.execute("UPDATE actas_formato SET suministro=? WHERE id=?", (suministro, fid))
             if datos is not None:
                 self.con.execute("UPDATE actas_formato SET archivo=?, datos=? WHERE id=?",
                                  (archivo, sqlite3.Binary(datos), fid))

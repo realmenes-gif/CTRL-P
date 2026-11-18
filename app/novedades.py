@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.4.7"
+VERSION_INTERNA = "1.4.8"
 
 CAMBIOS = [
+    ("1.4.8", [
+        "Informes: en las partidas con suministro ya cobrado (p. ej. Tabiquería al 21/10), lo registrado después cuenta × el complemento de lo cobrado en cada hito (61 % → × 39 %) contra lo contractual; lo que pasa es no cobrable. Da lo mismo que las actas de la computadora (el dato se pone allá, en Formatos de actas).",
+    ]),
     ("1.4.7", [
         "Informes con «Solo lo contractual» topa por hito: si lo contractual son 50 M2, no se cobran más de 50 de estructura, 50 de lámina, etc. Igual que en la computadora.",
     ]),

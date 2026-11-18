@@ -12,6 +12,7 @@ Cuentas de cada hito (cantidades reales, en la unidad de la partida):
   anterior        = todo lo registrado hasta el corte (sin pasar lo contractual)
   este período    = lo registrado después del corte y hasta el fin del período
   con enmienda    = este período × % de enmienda, sin pasar lo que le falta al hito para lo contractual
+                    (con «Suministro cobrado hasta»: el % es el complemento de lo cobrado en cada hito, 61 % → 39 %)
   a cobrar        = con enmienda × % del hito (equivalente)
   pendiente       = contractual − anterior − con enmienda
 Total a cobrar = suma de lo equivalente; su % es sobre lo contractual del tipo en ese edificio y nivel.
@@ -106,9 +107,13 @@ def leer_formato(ws):
 
 
 # ------------------------------------------------------------------ datos de Ctrl-P
-def _sumas(p, iid, nivel, cond, args):
-    q = "SELECT COALESCE(hito,''), SUM(cantidad) FROM avances WHERE item=? AND nivel=? AND " + cond + " GROUP BY 1"
-    return {h: s or 0.0 for h, s in p.con.execute(q, (iid, nivel) + tuple(args))}
+def _sumas(p, iid, nivel, cond, args, factor=False):
+    """Cantidades por hito. Con factor, lo registrado después del suministro vale × el complemento de lo cobrado
+    como suministro en ese hito (ver Proyecto.factores_suministro): es lo que ya cuenta como cobrado."""
+    fx, fa = p._sql_factor() if factor else ("1.0", [])
+    q = (f"SELECT COALESCE(hito,''), SUM(cantidad * {fx}) FROM avances WHERE item=? AND nivel=? AND " + cond +
+         " GROUP BY 1")
+    return {h: s or 0.0 for h, s in p.con.execute(q, tuple(fa) + (iid, nivel) + tuple(args))}
 
 
 def tipos_de(p, iid):
@@ -127,7 +132,9 @@ def datos_acta(p, it, nivel, tipo, corte, hasta, enmienda):
         cont = p.cant_tipos_de(iid).get((nivel, tipo)) or 0.0
     else:
         cont = p.contractual_de(iid).get(nivel) or 0.0
-    ant = _sumas(p, iid, nivel, "fecha <= ?", (corte,))
+    ant = _sumas(p, iid, nivel, "fecha <= ?", (corte,), factor=True)   # suministro + instalado × complemento
+    fs = p.suministros().get(iid)
+    facs = p.factores_suministro() if fs and corte >= fs else {}
     per = _sumas(p, iid, nivel, "fecha > ? AND fecha <= ?", (corte, hasta))
     hs = [h for h in p.hitos_de(iid) if (h.get("tipo") or None) == tipo] or \
         [{"id": "", "nombre": it["descripcion"], "pct": 100.0}]
@@ -135,11 +142,13 @@ def datos_acta(p, it, nivel, tipo, corte, hasta, enmienda):
     for h in hs:
         a = min(ant.get(h["id"], 0.0), cont) if cont else ant.get(h["id"], 0.0)
         q = per.get(h["id"], 0.0)
-        con_enm = q * enmienda
+        # con suministro cobrado: el complemento de lo cobrado en el hito (61 % → × 39 %); si no, la enmienda
+        fac = facs.get((iid, nivel, h["id"]), (None, 1.0))[1] if facs else enmienda
+        con_enm = q * fac
         if cont:
             con_enm = min(con_enm, max(0.0, cont - a))
         f = h["pct"] / 100.0
-        filas.append({"hito": h["nombre"], "pct": f, "ant": a, "per": q, "enm": con_enm, "cob": con_enm * f,
+        filas.append({"hito": h["nombre"], "pct": f, "ant": a, "per": q, "enm": con_enm, "fac": fac, "cob": con_enm * f,
                       "pend_cant": max(0.0, cont - a - con_enm) if cont else 0.0,
                       "pend": max(0.0, 1 - (a + con_enm) / cont) if cont else 0.0})
     return cont, filas
@@ -273,7 +282,7 @@ def armar_hoja(ws, pos, it, ubic, tipo, cont, filas, registro, fecha, enmienda, 
         r = f1 + k
         # datos de Ctrl-P como valores; las cuentas como fórmulas (se pueden revisar y ajustar en Excel)
         vals = [k + 1, it["codigo"], f["hito"], ubic, round(cont, 2), f["pct"], round(f["ant"], 2),
-                f"=IF({F}{r}>0,{H}{r}/{F}{r},0)", round(f["per"], 2), enmienda,
+                f"=IF({F}{r}>0,{H}{r}/{F}{r},0)", round(f["per"], 2), round(f.get("fac", enmienda), 6),
                 f"=IF({F}{r}>0,ROUND(MIN({J}{r}*{K}{r},MAX(0,{F}{r}-{H}{r})),2),ROUND({J}{r}*{K}{r},2))",
                 f"=ROUND({Lc}{r}*{G}{r},2)", f"=IF({F}{r}>0,MAX(0,{F}{r}-{H}{r}-{Lc}{r}),0)",
                 f"=IF({F}{r}>0,MAX(0,1-({H}{r}+{Lc}{r})/{F}{r}),0)"]

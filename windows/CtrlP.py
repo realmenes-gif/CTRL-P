@@ -32,12 +32,16 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.31"
-VERSION_INTERNA = "1.31"
+VERSION = "v1.32"
+VERSION_INTERNA = "1.32"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.32", [
+        "Actas e Informes: en las partidas con «Suministro cobrado hasta» en su formato de acta (p. ej. Tabiquería al 21/10/2026), lo registrado después vale × el complemento de lo cobrado en cada hito y ubicación (si llevaba 61 %, × 39 %). Lo cobrado + instalado × complemento se compara con lo contractual y lo que pasa queda como no cobrable. Informes y actas dan lo mismo, y el «Anterior» de las próximas actas sale bien.",
+        "«Formatos de actas › Editar» tiene el campo nuevo «Suministro cobrado hasta».",
+    ]),
     ("v1.31", [
         "Pantalla de ingreso: si hay una versión nueva de Ctrl-P, el aviso (Ver cambios · Actualizar · Más tarde) ya sale ahí, sin tener que entrar. Si la descarga empieza en el ingreso, sigue al entrar.",
     ]),
@@ -7860,6 +7864,11 @@ class VentanaFormatosActas(Ventana):
             n = ui.leer_num(v["enm"])
             if not isinstance(n, float) or not 0 < n <= 100:
                 return "La enmienda va entre 0 y 100 % (100 = sin enmienda)."
+            if v["sumi"].strip():
+                try:
+                    core.txt_a_iso(v["sumi"])
+                except core.ErrorCtrlP as e:
+                    return str(e)
             return ""
         v = ui.dialogo_form(self, "Formato de acta", "Las partidas van por código, separadas por coma.", [
             ("nombre", "Nombre del formato", False, (fo or {}).get("nombre", "Tabiquería")),
@@ -7868,11 +7877,14 @@ class VentanaFormatosActas(Ventana):
             ("enm", "Enmienda (%)", False, ui.txt_num(enm * 100) if enm is not None else "40"),
             ("nota", "Nota en observaciones", False, (fo or {}).get(
                 "nota", "Nota: el 40 % aplicado corresponde a la Enmienda 01 (instalación + aceptación).")),
+            ("sumi", "Suministro cobrado hasta (dd/mm/aaaa; vacío si no aplica)", False,
+             core.fecha_txt((fo or {}).get("suministro")) if (fo or {}).get("suministro") else ""),
         ], validar=validar)
         if not v:
             return None
         items = [por_cod[c.strip()]["id"] for c in v["partidas"].replace(";", ",").split(",") if c.strip()]
-        return v["nombre"], items, v["prefijo"].strip(), ui.leer_num(v["enm"]) / 100, v["nota"].strip()
+        sumi = core.txt_a_iso(v["sumi"]) if v["sumi"].strip() else ""
+        return v["nombre"], items, v["prefijo"].strip(), ui.leer_num(v["enm"]) / 100, v["nota"].strip(), sumi
 
     def _nuevo(self):
         x = self._leer_excel()
@@ -7881,7 +7893,7 @@ class VentanaFormatosActas(Ventana):
         f = self._form(None)
         if not f:
             return
-        self.p.guardar_formato_acta(None, *f, archivo=x[0], datos=x[1])
+        self.p.guardar_formato_acta(None, *f[:5], archivo=x[0], datos=x[1], suministro=f[5])
         self._cargar()
 
     def _editar(self):
@@ -7889,7 +7901,7 @@ class VentanaFormatosActas(Ventana):
         if fo:
             f = self._form(fo)
             if f:
-                self.p.guardar_formato_acta(fo["id"], *f)
+                self.p.guardar_formato_acta(fo["id"], *f[:5], suministro=f[5])
                 self._cargar()
 
     def _cambiar_excel(self):
