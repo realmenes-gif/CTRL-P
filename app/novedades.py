@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.4.8"
+VERSION_INTERNA = "1.4.9"
 
 CAMBIOS = [
+    ("1.4.9", [
+        "Cálculo interno unificado con la computadora: Informes, memorias y actas usan una sola regla para lo cobrable por hito. Los resultados no cambian.",
+    ]),
     ("1.4.8", [
         "Informes: en las partidas con suministro ya cobrado (p. ej. Tabiquería al 21/10), lo registrado después cuenta × el complemento de lo cobrado en cada hito (61 % → × 39 %) contra lo contractual; lo que pasa es no cobrable. Da lo mismo que las actas de la computadora (el dato se pone allá, en Formatos de actas).",
     ]),

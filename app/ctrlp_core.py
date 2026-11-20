@@ -1623,26 +1623,28 @@ class Proyecto:
             res.setdefault(r["item"], {})[(r["nivel"], r["equipo"] or "", r["tramo"] or "")] = r["s"] or 0.0
         return res
 
-    def desglose_tope_hitos(self, hasta, cont=None):
-        """Como ejecutado_desglose(hasta), pero en las partidas por hitos cada hito cuenta como máximo hasta lo
-        contractual de su ubicación (o de su tipo en esa ubicación): si son 50 M2, no se cobran más de 50 de
-        estructura, 50 de lámina, etc. Lo que sobra en un hito no compensa lo que falta en otro (igual que las actas).
-        Las cantidades por tramo o equipo siguen con sus propios topes."""
+    def hitos_acumulados(self, hasta, cont=None, item=None):
+        """Regla única de lo cobrable por hito (la usan Informes, memorias y actas): por cada (partida, ubicación,
+        hito) lo registrado hasta «hasta» (sin tramo ni equipo), con el factor del suministro ya aplicado (ver
+        factores_suministro), su tipo, su % y la base contractual en que topa (la del tipo en esa ubicación o la
+        de la ubicación; None si no hay). Devuelve [(item, nivel, hito, tipo, pct, cantidad, base)]."""
         cont = cont if cont is not None else self.todo_contractual()
-        dg = self.ejecutado_desglose(hasta=hasta)
         hitos = {r["id"]: (r["item"], r["tipo"] or "", (r["pct"] or 0.0) / 100.0)
                  for r in self.con.execute("SELECT id, item, tipo, pct FROM hitos")}
         if not hitos:
-            return dg
+            return []
         tipos = {}
         for r in self.con.execute("SELECT item, nivel, tipo, cantidad FROM tipo_cant"):
             tipos[(r["item"], r["nivel"], r["tipo"])] = r["cantidad"] or 0.0
         fx, args = self._sql_factor()
         q = f"SELECT item, nivel, hito, SUM(cantidad * {fx}) s FROM avances WHERE hito<>'' AND equipo='' AND tramo=''"
+        if item:
+            q += " AND item=?"
+            args.append(item)
         if hasta:
             q += " AND fecha<=?"
             args.append(hasta)
-        directo = {}
+        res = []
         for r in self.con.execute(q + " GROUP BY item, nivel, hito", args):
             h = hitos.get(r["hito"])
             if not h:
@@ -1651,15 +1653,56 @@ class Proyecto:
             base = tipos.get((iid, r["nivel"], tipo)) if tipo else None
             if base is None:
                 base = (cont.get(iid) or {}).get(r["nivel"])
-            q_h = r["s"] or 0.0
-            if base is not None and base > EPS:
+            if base is not None and base <= EPS:
+                base = None
+            res.append((iid, r["nivel"], r["hito"], tipo, f, r["s"] or 0.0, base))
+        return res
+
+    def desglose_tope_hitos(self, hasta, cont=None):
+        """Como ejecutado_desglose(hasta), pero en las partidas por hitos cada hito cuenta como máximo hasta lo
+        contractual de su ubicación (o de su tipo en esa ubicación): si son 50 M2, no se cobran más de 50 de
+        estructura, 50 de lámina, etc. Lo que sobra en un hito no compensa lo que falta en otro (igual que las actas).
+        Las cantidades por tramo o equipo siguen con sus propios topes."""
+        cont = cont if cont is not None else self.todo_contractual()
+        dg = self.ejecutado_desglose(hasta=hasta)
+        directo = {}
+        for iid, nv, _h, _t, f, q_h, base in self.hitos_acumulados(hasta, cont):
+            if base is not None:
                 q_h = min(q_h, base)
-            directo[(iid, r["nivel"])] = directo.get((iid, r["nivel"]), 0.0) + q_h * f
+            directo[(iid, nv)] = directo.get((iid, nv), 0.0) + q_h * f
         for (iid, nv), v in directo.items():
             d = dg.setdefault(iid, {})
             sin_hito = self._directo_sin_hito(iid, nv, hasta)
             d[(nv, "", "")] = v + sin_hito
         return dg
+
+    def avance_por_tipo(self, iid, hasta, solo_contractual=False, cont=None):
+        """{(tipo, nivel): cantidad ponderada} de lo registrado sin tramo ni equipo hasta «hasta», con la misma
+        regla que Informes y actas. Con solo_contractual cada hito topa en su base (lo que pasa es no cobrable);
+        sin eso se cuenta todo. Lo registrado sin hito va con tipo «»."""
+        cont = cont if cont is not None else self.todo_contractual()
+        res, bases = {}, {}
+        for _i, nv, _h, tipo, f, q_h, base in self.hitos_acumulados(hasta, cont, item=iid):
+            if solo_contractual and base is not None:
+                q_h = min(q_h, base)
+            res[(tipo, nv)] = res.get((tipo, nv), 0.0) + q_h * f
+            bases[(tipo, nv)] = base
+        fx, args = self._sql_factor()
+        q = (f"SELECT nivel, SUM(cantidad * {fx}) s FROM avances WHERE item=? AND (hito='' OR hito IS NULL) "
+             "AND equipo='' AND tramo=''")
+        args.append(iid)
+        if hasta:
+            q += " AND fecha<=?"
+            args.append(hasta)
+        for r in self.con.execute(q + " GROUP BY nivel", args):
+            k = ("", r["nivel"])
+            res[k] = res.get(k, 0.0) + (r["s"] or 0.0)
+            bases.setdefault(k, (cont.get(iid) or {}).get(r["nivel"]))
+        if solo_contractual:
+            for k, b in bases.items():
+                if b is not None and k[0] == "":
+                    res[k] = min(res[k], b)
+        return res
 
     def _directo_sin_hito(self, iid, nv, hasta):
         fx, args = self._sql_factor()

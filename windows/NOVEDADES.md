@@ -1,4 +1,8 @@
-## Ctrl-P v1.33 (Windows)
+## Ctrl-P v1.34 (Windows)
+
+- Memorias de cálculo: las cantidades salen de la misma regla que Informes y actas (suministro cobrado × complemento por hito y tope por hito). Con «Solo lo contractual» se ve lo cobrable; sin él, también lo no cobrable. Ahora la memoria cuadra con el informe.
+
+### Incluye lo de la v1.33
 
 - Actas: abajo de la tabla ya no va el % (quedaba bajo «% pendiente» y se prestaba a confusión). Solo queda el total a cobrar.
 

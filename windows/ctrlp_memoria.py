@@ -228,43 +228,66 @@ def datos_partida(p, it, desde, hasta, cortes, solo_contractual=False):
             diseno[(tp, nv)] = diseno.get((tp, nv), 0.0) + c
     con_diseno = bool(diseno3)
 
-    # ejecutado ponderado por dia: {(tipo, nivel, tramo, fecha): cantidad}
+    # ejecutado por dia y por hito: {(tipo, nivel, tramo, hito, fecha): cantidad}. Misma regla que Informes y
+    # actas: con «Suministro cobrado hasta» en el formato de acta, lo registrado después vale × el complemento
+    # de lo cobrado en cada hito (61 % → 39 %); con «solo lo contractual», cada hito topa en lo contractual
+    # antes de ponderar (lo que pasa es no cobrable); sin eso, se ve todo, no cobrable incluido.
     ej = {}
     ids_tramo = {t["id"] for t in tramos_act}
+    facs = p.factores_suministro()
     for r in p.con.execute("SELECT nivel, hito, tramo, fecha, SUM(cantidad) s FROM avances WHERE item=? AND fecha<=? "
                            "GROUP BY nivel, hito, tramo, fecha", (iid, hasta)):
         if r["nivel"] not in ubic:
             continue
-        h = hitos.get(r["hito"] or "")
-        if (r["hito"] or "") and h is None:
+        hid = r["hito"] or ""
+        h = hitos.get(hid)
+        if hid and h is None:
             continue
-        pct = (h["pct"] / 100.0) if h else 1.0
-        tp = tipo_de_hito.get(r["hito"] or "", "") if con_tipos else ""
+        tp = tipo_de_hito.get(hid, "") if con_tipos else ""
         if con_tipos and tp not in tipos:
             continue
         tr = (r["tramo"] or "") if (usar_tramos and (r["tramo"] or "") in ids_tramo) else ""
-        k = (tp, r["nivel"], tr, r["fecha"])
-        ej[k] = ej.get(k, 0.0) + (r["s"] or 0.0) * pct
+        q = r["s"] or 0.0
+        fx = facs.get((iid, r["nivel"], hid))
+        if fx and r["fecha"] > fx[0]:
+            q *= fx[1]
+        k = (tp, r["nivel"], tr, hid, r["fecha"])
+        ej[k] = ej.get(k, 0.0) + q
+    pct_de = {hid: (h["pct"] / 100.0) for hid, h in hitos.items()}
 
     # tramos de tiempo: anterior (hasta el dia antes de «desde») y cada semana
     ant_hasta = dia_anterior(desde)
     tramos_t = [(None, ant_hasta)] + [(d0.isoformat(), d1.isoformat()) for d0, d1 in cortes]
 
-    def acum(tp, nv, tr, hasta_):
-        return sum(v for (t, n, r_, f), v in ej.items()
-                   if t == tp and n == nv and r_ == tr and (hasta_ is None or f <= hasta_))
+    def acum(tp, nv, tr, hasta_, tope):
+        por_hito = {}
+        for (t, n, r_, hid, f), v in ej.items():
+            if t == tp and n == nv and r_ == tr and (hasta_ is None or f <= hasta_):
+                por_hito[hid] = por_hito.get(hid, 0.0) + v
+        tot = 0.0
+        for hid, q in por_hito.items():
+            if tope is not None:
+                q = min(q, tope)                    # cada hito no pasa de lo contractual
+            tot += q * pct_de.get(hid, 1.0)
+        return min(tot, tope) if tope is not None else tot
 
+    # lo que no va por tramo sale de la misma función que Informes y actas (Proyecto.avance_por_tipo); los tramos
+    # de la actividad siguen con su cuenta propia (cada tramo topa en su cantidad)
+    cont_all = p.todo_contractual()
+    por_corte = [p.avance_por_tipo(iid, d1, solo_contractual, cont_all) for (_d0, d1) in tramos_t]
     valores3 = {}     # (tipo, nivel, tramo) -> [anterior, sem1, sem2, ...]
-    claves = set(diseno3) | {(t, n, r_) for (t, n, r_, _f) in ej}
+    claves = set(diseno3) | {(t, n, r_) for (t, n, r_, _h, _f) in ej}
     for tp, nv, tr in claves:
         if solo_contractual and con_diseno and (tp, nv, tr) not in diseno3:
             continue
         tope = diseno3.get((tp, nv, tr)) if solo_contractual else None
         previo, fila = 0.0, []
         for k, (_d0, d1) in enumerate(tramos_t):
-            a = acum(tp, nv, tr, d1)
-            if tope is not None:
-                a = min(a, tope)
+            if tr == "":
+                a = por_corte[k].get((tp, nv), 0.0) if con_tipos else sum(
+                    v for (t_, n_), v in por_corte[k].items() if n_ == nv)
+            else:
+                a = acum(tp, nv, tr, d1, tope)
             fila.append(a - previo)
             previo = a
         valores3[(tp, nv, tr)] = fila

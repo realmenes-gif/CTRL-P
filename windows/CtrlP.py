@@ -32,12 +32,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.33"
-VERSION_INTERNA = "1.33"
+VERSION = "v1.34"
+VERSION_INTERNA = "1.34"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.34", [
+        "Memorias de cálculo: las cantidades salen de la misma regla que Informes y actas (suministro cobrado × complemento por hito y tope por hito). Con «Solo lo contractual» se ve lo cobrable; sin él, también lo no cobrable. Ahora la memoria cuadra con el informe.",
+    ]),
     ("v1.33", [
         "Actas: abajo de la tabla ya no va el % (quedaba bajo «% pendiente» y se prestaba a confusión). Solo queda el total a cobrar.",
     ]),
