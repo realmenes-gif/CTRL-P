@@ -1,0 +1,9 @@
+{
+ "version": "1.4.10",
+ "apk": "ctrlp-1.4.10-arm64-v8a-debug.apk",
+ "sha256": "6492310670a0e01581bca0928e23d649b9754ce58cb2b4a6e82b9c8cfe71ebe5",
+ "tamano": 24713426,
+ "novedades": [
+  "Cálculo interno: la regla de lo cobrable por hito queda igual a la de la computadora (también para memorias con formato propio). Los resultados en la tablet no cambian."
+ ]
+}
