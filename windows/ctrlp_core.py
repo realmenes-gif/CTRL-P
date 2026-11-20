@@ -1676,16 +1676,24 @@ class Proyecto:
             d[(nv, "", "")] = v + sin_hito
         return dg
 
+    def avance_por_hito(self, iid, hasta, solo_contractual=False, cont=None):
+        """{(tipo, nivel, hito): (cantidad ponderada, base)} con la regla de hitos_acumulados; con
+        solo_contractual cada hito topa en su base antes de ponderar."""
+        res = {}
+        for _i, nv, hid, tipo, f, q_h, base in self.hitos_acumulados(hasta, cont, item=iid):
+            if solo_contractual and base is not None:
+                q_h = min(q_h, base)
+            res[(tipo, nv, hid)] = (q_h * f, base)
+        return res
+
     def avance_por_tipo(self, iid, hasta, solo_contractual=False, cont=None):
         """{(tipo, nivel): cantidad ponderada} de lo registrado sin tramo ni equipo hasta «hasta», con la misma
         regla que Informes y actas. Con solo_contractual cada hito topa en su base (lo que pasa es no cobrable);
         sin eso se cuenta todo. Lo registrado sin hito va con tipo «»."""
         cont = cont if cont is not None else self.todo_contractual()
         res, bases = {}, {}
-        for _i, nv, _h, tipo, f, q_h, base in self.hitos_acumulados(hasta, cont, item=iid):
-            if solo_contractual and base is not None:
-                q_h = min(q_h, base)
-            res[(tipo, nv)] = res.get((tipo, nv), 0.0) + q_h * f
+        for (tipo, nv, _h), (v, base) in self.avance_por_hito(iid, hasta, solo_contractual, cont).items():
+            res[(tipo, nv)] = res.get((tipo, nv), 0.0) + v
             bases[(tipo, nv)] = base
         fx, args = self._sql_factor()
         q = (f"SELECT nivel, SUM(cantidad * {fx}) s FROM avances WHERE item=? AND (hito='' OR hito IS NULL) "

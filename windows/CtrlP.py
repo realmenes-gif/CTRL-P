@@ -32,12 +32,15 @@ import ctrlp_nube as nb
 import json
 from ctrlp_ui import C, F, TF, boton, col, entrada, etiqueta, fmt, fmt_pct
 
-VERSION = "v1.34"
-VERSION_INTERNA = "1.34"
+VERSION = "v1.35"
+VERSION_INTERNA = "1.35"
 AUTOR = "Meneses999"
 
 # Historial de cambios (se ve en Apariencia › «Novedades» y al actualizar)
 CAMBIOS = [
+    ("v1.35", [
+        "Memorias con formato propio de la actividad (como la de Particiones livianas 06.03): también usan la regla de Informes y actas. Con «Solo lo contractual» da lo cobrable; sin él, también lo no cobrable. Antes ese formato seguía con su cuenta vieja.",
+    ]),
     ("v1.34", [
         "Memorias de cálculo: las cantidades salen de la misma regla que Informes y actas (suministro cobrado × complemento por hito y tope por hito). Con «Solo lo contractual» se ve lo cobrable; sin él, también lo no cobrable. Ahora la memoria cuadra con el informe.",
     ]),

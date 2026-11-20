@@ -1,8 +1,11 @@
 """Version de la app de la tablet y sus novedades (buildozer toma la version de aqui; GitHub arma version.json)."""
 
-VERSION_INTERNA = "1.4.9"
+VERSION_INTERNA = "1.4.10"
 
 CAMBIOS = [
+    ("1.4.10", [
+        "Cálculo interno: la regla de lo cobrable por hito queda igual a la de la computadora (también para memorias con formato propio). Los resultados en la tablet no cambian.",
+    ]),
     ("1.4.9", [
         "Cálculo interno unificado con la computadora: Informes, memorias y actas usan una sola regla para lo cobrable por hito. Los resultados no cambian.",
     ]),

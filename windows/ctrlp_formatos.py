@@ -259,6 +259,37 @@ class Datos:
                 tot = por_tramo(filas)
                 self.serie_hito[(kb, hid)] = [x * (s / t) if abs(t) > 1e-12 else 0.0
                                               for x, s, t in zip(sh, serie, tot)]
+        # lo que no va por tramo ni equipo: misma regla que Informes, actas y la memoria general
+        # (Proyecto.avance_por_hito: suministro × complemento y tope por hito según «solo lo contractual»)
+        cont_all = p.todo_contractual()
+        cortes_h = [p.avance_por_hito(iid, d1, solo_contractual, cont_all) for d1 in tramos_t]
+        directos = {kb for kb in self.serie_base if kb[2] == "" and kb[3] == ""}
+        for kb in directos:
+            tp, nv = kb[0], kb[1]
+            hids = {k[2] for c in cortes_h for k in c if k[1] == nv and (k[0] == tp or not self.con_tipos)}
+            sin_h = [(k[5], v[0]) for k, v in ej.items() if k[:4] == kb and k[4] == ""]
+            tot_ser = [0.0] * self.n
+            for hid in hids:
+                previo, ser = 0.0, []
+                for c in cortes_h:
+                    a = sum(v for (t_, n_, h_), (v, _b) in c.items()
+                            if n_ == nv and h_ == hid and (t_ == tp or not self.con_tipos))
+                    ser.append(a - previo)
+                    previo = a
+                self.serie_hito[(kb, hid)] = ser
+                tot_ser = [x + y for x, y in zip(tot_ser, ser)]
+            if sin_h:                                   # lo registrado sin hito sigue con su cuenta (y su tope)
+                tope = dis.get(kb) if solo_contractual else None
+                previo, ser = 0.0, []
+                for d1 in tramos_t:
+                    a = sum(v for f, v in sin_h if f <= d1)
+                    if tope is not None:
+                        a = min(a, tope)
+                    ser.append(a - previo)
+                    previo = a
+                self.serie_hito[(kb, "")] = ser
+                tot_ser = [x + y for x, y in zip(tot_ser, ser)]
+            self.serie_base[kb] = tot_ser
         for hid in {k[4] for k in ej}:
             self.unid_hito[hid] = por_tramo([(k[5], v[1]) for k, v in ej.items() if k[4] == hid])
         self.claves = set(self.serie_base) | set(dis)
